@@ -226,6 +226,12 @@ export default class SpinScene extends Phaser.Scene {
     this.isHurt = false;
     this.exitReached = false;
 
+    // Power-up state
+    this.activePowerup = null; // { type, timerEvent }
+    // stop = freeze record (no momentum decay, velocity forced to 0)
+    // slow = gentle auto-spin when not dragging (0.06 rad/s)
+    // fast = strong auto-spin when not dragging (0.5 rad/s)
+
     // Keyboard input — A/D to move, Space/W/Up to jump
     this.keys = this.input.keyboard.addKeys({
       left: Phaser.Input.Keyboard.KeyCodes.A,
@@ -282,8 +288,9 @@ export default class SpinScene extends Phaser.Scene {
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
       const sprite = this.platformBodies[i];
       sprite.setPosition(pos.x, pos.y);
-      sprite.rotation = def.angle + rotation + (def.tilt || 0);
-      sprite.body.reset(pos.x, pos.y);
+      const rot = def.angle + rotation + (def.tilt || 0);
+      sprite.rotation = rot;
+      this._updatePlatformBody(sprite, def, pos, rot);
     });
 
     // Arc wall segments
@@ -311,7 +318,10 @@ export default class SpinScene extends Phaser.Scene {
         (target.x - sprite.x) * invDt,
         (target.y - sprite.y) * invDt
       );
-      sprite.rotation = def.angle + rotation + (def.tilt || 0);
+      const rot = def.angle + rotation + (def.tilt || 0);
+      sprite.rotation = rot;
+      // Update body size to match rotated bounding box
+      this._updatePlatformBody(sprite, def, target, rot);
     });
 
     // Arc wall segments — velocity-based like platforms
@@ -376,7 +386,8 @@ export default class SpinScene extends Phaser.Scene {
       const sprite = this.platformBodies[i];
       sprite.setPosition(target.x, target.y);
       sprite.body.setVelocity(0, 0);
-      sprite.body.position.set(target.x - sprite.body.halfWidth, target.y - sprite.body.halfHeight);
+      const rot = def.angle + rotation + (def.tilt || 0);
+      this._updatePlatformBody(sprite, def, target, rot);
     });
 
     // Snap arc wall segments too
@@ -386,6 +397,27 @@ export default class SpinScene extends Phaser.Scene {
       seg.sprite.body.setVelocity(0, 0);
       seg.sprite.body.position.set(target.x - seg.sprite.body.halfWidth, target.y - seg.sprite.body.halfHeight);
     });
+  }
+
+  /**
+   * Update a platform's physics body to match its rotated bounding box.
+   * Arcade Physics only supports AABBs, so we compute the AABB of the
+   * rotated rectangle and resize the body to fit tightly.
+   */
+  _updatePlatformBody(sprite, def, pos, rotation) {
+    const w = def.width;
+    const h = def.height;
+    const cos = Math.abs(Math.cos(rotation));
+    const sin = Math.abs(Math.sin(rotation));
+    // AABB of a rotated rectangle
+    const aabbW = w * cos + h * sin;
+    const aabbH = w * sin + h * cos;
+    sprite.body.setSize(aabbW, aabbH);
+    sprite.body.setOffset(
+      (sprite.displayWidth - aabbW) / 2,
+      (sprite.displayHeight - aabbH) / 2
+    );
+    sprite.body.position.set(pos.x - aabbW / 2, pos.y - aabbH / 2);
   }
 
   createRecordDisc(record) {
@@ -440,6 +472,13 @@ export default class SpinScene extends Phaser.Scene {
     this.livesText = this.add.text(GAME_WIDTH - 12, 30, `♥ ${this.lives}`, {
       fontSize: '14px', color: '#e94560', fontFamily: 'monospace',
     }).setOrigin(1, 0).setDepth(d);
+
+    // Power-up indicator
+    this.powerupText = this.add.text(GAME_WIDTH / 2, 14, '', {
+      fontSize: '15px', color: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setDepth(d).setAlpha(0);
+    this.powerupTimerBar = this.add.rectangle(GAME_WIDTH / 2, 36, 120, 6, 0xffffff, 0.5)
+      .setOrigin(0.5, 0).setDepth(d).setVisible(false);
   }
 
   createTouchControls() {
@@ -500,9 +539,27 @@ export default class SpinScene extends Phaser.Scene {
       angleDelta = this.pendingDragDelta;
       this.pendingDragDelta = 0;
     } else {
-      angleDelta = this.angularVelocity * dt;
-      this.angularVelocity *= 0.97;
-      if (Math.abs(this.angularVelocity) < 0.01) this.angularVelocity = 0;
+      // Power-up effects apply when NOT dragging
+      const pu = this.activePowerup ? this.activePowerup.type : null;
+
+      if (pu === 'stop') {
+        // Freeze: kill all momentum, record stays still
+        this.angularVelocity = 0;
+        angleDelta = 0;
+      } else if (pu === 'slow') {
+        // Slow: gentle constant auto-spin (overrides momentum)
+        this.angularVelocity = 0.06;
+        angleDelta = this.angularVelocity * dt;
+      } else if (pu === 'fast') {
+        // Fast: strong constant auto-spin (overrides momentum)
+        this.angularVelocity = 0.5;
+        angleDelta = this.angularVelocity * dt;
+      } else {
+        // Normal: momentum with friction decay
+        angleDelta = this.angularVelocity * dt;
+        this.angularVelocity *= 0.97;
+        if (Math.abs(this.angularVelocity) < 0.01) this.angularVelocity = 0;
+      }
     }
 
     // Apply rotation in small sub-steps to prevent tunneling
@@ -530,7 +587,7 @@ export default class SpinScene extends Phaser.Scene {
     // ── Slope traction: slide off platforms tilted > 20% grade ──
     // 20% grade = atan(0.2) ≈ 0.197 rad ≈ 11.3°
     const TRACTION_LIMIT = 0.197;
-    const SLIDE_ACCEL = 600;
+    const SLIDE_ACCEL = 900;
     const onGround = this.player.body.blocked.down || this.player.body.touching.down;
     let isSliding = false;
 
@@ -574,7 +631,7 @@ export default class SpinScene extends Phaser.Scene {
           const sign = downhillY >= 0 ? 1 : -1;
 
           this.player.body.velocity.x += sign * downhillX * SLIDE_ACCEL * strength * dt;
-          this.player.body.velocity.y += Math.abs(downhillY) * SLIDE_ACCEL * strength * dt * 0.5;
+          this.player.body.velocity.y += Math.abs(downhillY) * SLIDE_ACCEL * strength * dt;
         }
       }
     }
@@ -715,6 +772,60 @@ export default class SpinScene extends Phaser.Scene {
     puSprite.destroy();
     this.score += 50;
     this.scoreText.setText(`Score: ${this.score}`);
+
+    const type = this.powerupDefs[idx].type;
+    this.activatePowerup(type);
+  }
+
+  activatePowerup(type) {
+    const DURATION = 5000;
+    const COLORS = { stop: 0x00ccff, slow: 0x88ff44, fast: 0xff8800 };
+    const LABELS = { stop: '⏸ FREEZE', slow: '⏪ SLOW', fast: '⏩ FAST' };
+
+    // Cancel existing
+    if (this.activePowerup && this.activePowerup.timerEvent) {
+      this.activePowerup.timerEvent.remove(false);
+    }
+
+    const color = COLORS[type];
+
+    // HUD
+    this.powerupText.setText(LABELS[type]);
+    this.powerupText.setColor(`#${color.toString(16).padStart(6, '0')}`);
+    this.powerupText.setAlpha(1);
+    this.powerupTimerBar.setVisible(true);
+    this.powerupTimerBar.setFillStyle(color, 0.6);
+    this.powerupTimerBar.setSize(120, 6);
+
+    this.tweens.killTweensOf(this.powerupTimerBar);
+    this.tweens.add({
+      targets: this.powerupTimerBar,
+      displayWidth: 0,
+      duration: DURATION,
+      ease: 'Linear',
+    });
+
+    // Flash near end
+    this.time.delayedCall(DURATION - 1200, () => {
+      if (this.activePowerup && this.activePowerup.type === type) {
+        this.tweens.add({
+          targets: this.powerupText,
+          alpha: 0.3, duration: 150, yoyo: true, repeat: 4,
+        });
+      }
+    });
+
+    const timerEvent = this.time.delayedCall(DURATION, () => {
+      this.activePowerup = null;
+      this.powerupText.setAlpha(0);
+      this.powerupTimerBar.setVisible(false);
+    });
+
+    this.activePowerup = { type, timerEvent };
+
+    // Camera flash
+    this.cameras.main.flash(100,
+      (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff, true);
   }
 
   hitHazard(player, hazard) {
