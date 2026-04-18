@@ -11,7 +11,7 @@ export default class MenuScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#1a1a2e');
 
     // Spinning record background
-    this.recordGraphic = this.drawRecord(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40, 180, 0x1a1a2e, 0xe94560);
+    this.recordGraphic = this.drawRecord(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, 200, 0x1a1a2e, 0xe94560);
 
     // Title
     this.add.text(GAME_WIDTH / 2, 60, 'RECORD RUNNER', {

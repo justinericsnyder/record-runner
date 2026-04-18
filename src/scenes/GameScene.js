@@ -148,13 +148,13 @@ export default class GameScene extends Phaser.Scene {
 
   /** Reposition all rotating objects based on current record angle */
   positionAllObjects(rotation) {
-    // Platforms
+    // Platforms — rotation is base radial angle + record spin + per-platform tilt
     this.platformDefs.forEach((def, i) => {
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
       const sprite = this.platformBodies[i];
       sprite.x = pos.x;
       sprite.y = pos.y;
-      sprite.rotation = def.angle + rotation;
+      sprite.rotation = def.angle + rotation + (def.tilt || 0);
       sprite.body.reset(pos.x, pos.y);
     });
 
@@ -201,10 +201,10 @@ export default class GameScene extends Phaser.Scene {
     }
     // Label
     g.fillStyle(record.labelColor, 0.15);
-    g.fillCircle(0, 0, 55);
+    g.fillCircle(0, 0, 70);
     // Center hole
     g.fillStyle(0x000000, 0.4);
-    g.fillCircle(0, 0, 6);
+    g.fillCircle(0, 0, 8);
 
     container.add(g);
     container.setDepth(-1);
@@ -332,7 +332,7 @@ export default class GameScene extends Phaser.Scene {
     const dx = this.player.x - RECORD_CENTER_X;
     const dy = this.player.y - RECORD_CENTER_Y;
     const distFromCenter = Math.sqrt(dx * dx + dy * dy);
-    if (this.player.y > GAME_HEIGHT + 60 || distFromCenter > RECORD_RADIUS + 80) {
+    if (this.player.y > GAME_HEIGHT + 80 || distFromCenter > RECORD_RADIUS + 100) {
       this.playerDie();
     }
   }

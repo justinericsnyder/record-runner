@@ -1,15 +1,131 @@
+// Procedural level generator.
 // Each record is a map, each song is a level.
-// Platforms: { angle, dist, width, height } — polar coords from record center
-// Collectibles: { angle, dist }
-// Hazards: { angle, dist, width }
-// Exit / playerStart: { angle, dist }
-//
-// angle PI*0.5 = straight down (6 o'clock) — this is where the starting platform
-// always sits so it appears flat/horizontal at the bottom of the record.
-// Levels spiral clockwise inward toward the label (exit near center).
+// Start angle is PI (9 o'clock / left side of the record).
+// Platforms spiral inward with randomized angles, distances, tilts, and spacing.
+// Generator guarantees reachability: each platform is within jump range of the previous one.
+
+import { RECORD_RADIUS } from './config.js';
 
 const PI = Math.PI;
 
+// Seeded PRNG for reproducible levels
+function mulberry32(seed) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function generateSong(seed, difficulty) {
+  const rng = mulberry32(seed);
+  const rand = (min, max) => min + rng() * (max - min);
+  const randInt = (min, max) => Math.floor(rand(min, max + 1));
+
+  // Difficulty scales: 0 = easy, 1 = medium, 2 = hard
+  const d = Math.min(difficulty, 2);
+
+  // Platform count scales with difficulty
+  const platCount = randInt(14 + d * 4, 18 + d * 5);
+
+  // Start at PI (9 o'clock), spiral ~1.5 to 2 full rotations inward
+  const totalAngleSpan = rand(PI * 2.8, PI * 3.6);
+  const startDist = RECORD_RADIUS - rand(15, 30);
+  const endDist = rand(55, 80);
+
+  const platforms = [];
+  const collectibles = [];
+  const hazards = [];
+
+  // Max jump reach constraints (in polar space, approximate)
+  const maxJumpDist = 55;    // max radial distance change per jump
+  const maxJumpAngle = PI * 0.28; // max angular gap
+
+  let prevAngle = PI; // 9 o'clock start
+  let prevDist = startDist;
+
+  for (let i = 0; i < platCount; i++) {
+    const progress = i / (platCount - 1); // 0..1
+
+    let angle, dist;
+
+    if (i === 0) {
+      // Starting platform — always at PI (9 o'clock), wide and flat
+      angle = PI;
+      dist = startDist;
+    } else {
+      // Base progression along the spiral
+      const baseAngle = PI + totalAngleSpan * progress;
+      const baseDist = startDist + (endDist - startDist) * progress;
+
+      // Add randomness but clamp to jump range from previous platform
+      const angleJitter = rand(-PI * 0.08, PI * 0.12);
+      const distJitter = rand(-25, 15);
+
+      angle = baseAngle + angleJitter;
+      dist = Math.max(endDist - 10, Math.min(startDist + 5, baseDist + distJitter));
+
+      // Ensure reachable from previous platform
+      const angleDiff = Math.abs(angle - prevAngle);
+      if (angleDiff > maxJumpAngle) {
+        angle = prevAngle + Math.sign(angle - prevAngle) * maxJumpAngle;
+      }
+      const distDiff = Math.abs(dist - prevDist);
+      if (distDiff > maxJumpDist) {
+        dist = prevDist + Math.sign(dist - prevDist) * maxJumpDist;
+      }
+      // Keep dist on the inward trend
+      dist = Math.min(dist, prevDist + 10);
+    }
+
+    // Platform size shrinks with difficulty and progress
+    const widthBase = i === 0 ? 140 : rand(60, 110) - d * 8 - progress * 15;
+    const width = Math.max(45, widthBase);
+    const height = i === 0 ? 22 : Math.max(12, rand(14, 20) - d * 2);
+
+    // Tilt: starting platform is always flat (0), others get random tilt
+    // More tilt in later levels and further into the level
+    const maxTilt = (0.15 + d * 0.1 + progress * 0.1);
+    const tilt = i === 0 ? 0 : rand(-maxTilt, maxTilt);
+
+    platforms.push({ angle, dist, width, height, tilt });
+
+    prevAngle = angle;
+    prevDist = dist;
+
+    // Collectible between this and next platform (skip first)
+    if (i > 0 && rng() < 0.75) {
+      const cAngle = (platforms[i - 1].angle + angle) / 2 + rand(-0.03, 0.03);
+      const cDist = (platforms[i - 1].dist + dist) / 2 + rand(-8, 8);
+      collectibles.push({ angle: cAngle, dist: cDist });
+    }
+
+    // Hazard on some platforms (never on first or second, more on harder levels)
+    if (i >= 3 && rng() < 0.15 + d * 0.12) {
+      hazards.push({ angle, dist: dist - 1, width: Math.min(width * 0.7, 50) });
+    }
+  }
+
+  // A few bonus collectibles scattered near platforms
+  for (let i = 0; i < randInt(2, 4 + d); i++) {
+    const srcPlat = platforms[randInt(2, platforms.length - 2)];
+    collectibles.push({
+      angle: srcPlat.angle + rand(-0.08, 0.08),
+      dist: srcPlat.dist + rand(-20, -5),
+    });
+  }
+
+  return {
+    platforms,
+    collectibles,
+    hazards,
+    playerStart: { angle: PI, dist: startDist },
+    exit: { angle: platforms[platforms.length - 1].angle, dist: Math.max(40, platforms[platforms.length - 1].dist - 25) },
+  };
+}
+
+// Record definitions — songs are procedurally generated
 export const RECORDS = [
   {
     id: 'vinyl-debut',
@@ -18,101 +134,9 @@ export const RECORDS = [
     grooveColor: 0x16213e,
     labelColor: 0xe94560,
     songs: [
-      {
-        id: 'first-groove',
-        name: 'First Groove',
-        bpm: 100,
-        // Gentle intro — wide platforms, smooth spiral, no hazards
-        platforms: [
-          { angle: PI * 0.5,  dist: 260, width: 160, height: 24 },  // START — flat at bottom
-          { angle: PI * 0.72, dist: 240, width: 120, height: 20 },
-          { angle: PI * 0.95, dist: 220, width: 120, height: 20 },
-          { angle: PI * 1.18, dist: 195, width: 110, height: 20 },
-          { angle: PI * 1.42, dist: 170, width: 110, height: 20 },
-          { angle: PI * 1.65, dist: 140, width: 100, height: 20 },
-          { angle: PI * 1.85, dist: 105, width: 100, height: 20 },
-        ],
-        collectibles: [
-          { angle: PI * 0.61, dist: 250 },
-          { angle: PI * 0.84, dist: 230 },
-          { angle: PI * 1.07, dist: 208 },
-          { angle: PI * 1.30, dist: 182 },
-          { angle: PI * 1.53, dist: 155 },
-          { angle: PI * 1.75, dist: 122 },
-        ],
-        hazards: [],
-        playerStart: { angle: PI * 0.5, dist: 260 },
-        exit: { angle: PI * 1.85, dist: 75 },
-      },
-      {
-        id: 'needle-drop',
-        name: 'Needle Drop',
-        bpm: 120,
-        // Tighter spacing, first hazards introduced
-        platforms: [
-          { angle: PI * 0.5,  dist: 260, width: 140, height: 22 },  // START
-          { angle: PI * 0.68, dist: 242, width: 100, height: 18 },
-          { angle: PI * 0.86, dist: 222, width: 100, height: 18 },
-          { angle: PI * 1.05, dist: 200, width: 100, height: 18 },
-          { angle: PI * 1.25, dist: 180, width: 95, height: 18 },
-          { angle: PI * 1.45, dist: 158, width: 90, height: 18 },
-          { angle: PI * 1.62, dist: 135, width: 90, height: 18 },
-          { angle: PI * 1.78, dist: 110, width: 90, height: 18 },
-          { angle: PI * 1.92, dist: 85, width: 85, height: 18 },
-        ],
-        collectibles: [
-          { angle: PI * 0.59, dist: 251 },
-          { angle: PI * 0.77, dist: 232 },
-          { angle: PI * 0.96, dist: 211 },
-          { angle: PI * 1.15, dist: 190 },
-          { angle: PI * 1.35, dist: 169 },
-          { angle: PI * 1.53, dist: 146 },
-          { angle: PI * 1.70, dist: 122 },
-          { angle: PI * 1.85, dist: 97 },
-        ],
-        hazards: [
-          { angle: PI * 0.86, dist: 220, width: 65 },
-          { angle: PI * 1.45, dist: 156, width: 60 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 260 },
-        exit: { angle: PI * 1.92, dist: 60 },
-      },
-      {
-        id: 'bass-line',
-        name: 'Bass Line',
-        bpm: 130,
-        // Narrower platforms, more hazards, zigzag distances
-        platforms: [
-          { angle: PI * 0.5,  dist: 262, width: 130, height: 22 },  // START
-          { angle: PI * 0.66, dist: 245, width: 85, height: 18 },
-          { angle: PI * 0.82, dist: 225, width: 85, height: 18 },
-          { angle: PI * 0.98, dist: 205, width: 85, height: 18 },
-          { angle: PI * 1.15, dist: 185, width: 80, height: 18 },
-          { angle: PI * 1.32, dist: 165, width: 80, height: 18 },
-          { angle: PI * 1.48, dist: 145, width: 80, height: 18 },
-          { angle: PI * 1.62, dist: 125, width: 80, height: 18 },
-          { angle: PI * 1.78, dist: 105, width: 75, height: 18 },
-          { angle: PI * 1.92, dist: 80, width: 80, height: 18 },
-        ],
-        collectibles: [
-          { angle: PI * 0.58, dist: 253 },
-          { angle: PI * 0.74, dist: 235 },
-          { angle: PI * 0.90, dist: 215 },
-          { angle: PI * 1.07, dist: 195 },
-          { angle: PI * 1.24, dist: 175 },
-          { angle: PI * 1.40, dist: 155 },
-          { angle: PI * 1.55, dist: 135 },
-          { angle: PI * 1.70, dist: 115 },
-          { angle: PI * 1.85, dist: 92 },
-        ],
-        hazards: [
-          { angle: PI * 0.82, dist: 223, width: 55 },
-          { angle: PI * 1.32, dist: 163, width: 55 },
-          { angle: PI * 1.78, dist: 103, width: 50 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 262 },
-        exit: { angle: PI * 1.92, dist: 55 },
-      },
+      { id: 'first-groove',  name: 'First Groove',  bpm: 100, ...generateSong(1001, 0) },
+      { id: 'needle-drop',   name: 'Needle Drop',   bpm: 120, ...generateSong(1002, 0) },
+      { id: 'bass-line',     name: 'Bass Line',     bpm: 130, ...generateSong(1003, 0.5) },
     ],
   },
   {
@@ -122,123 +146,9 @@ export const RECORDS = [
     grooveColor: 0x16213e,
     labelColor: 0xe94560,
     songs: [
-      {
-        id: 'voltage-ride',
-        name: 'Voltage Ride',
-        bpm: 140,
-        platforms: [
-          { angle: PI * 0.5,  dist: 265, width: 120, height: 20 },  // START
-          { angle: PI * 0.66, dist: 248, width: 80, height: 16 },
-          { angle: PI * 0.82, dist: 230, width: 80, height: 16 },
-          { angle: PI * 0.98, dist: 212, width: 75, height: 16 },
-          { angle: PI * 1.14, dist: 194, width: 75, height: 16 },
-          { angle: PI * 1.30, dist: 176, width: 70, height: 16 },
-          { angle: PI * 1.46, dist: 158, width: 70, height: 16 },
-          { angle: PI * 1.60, dist: 140, width: 70, height: 16 },
-          { angle: PI * 1.74, dist: 120, width: 70, height: 16 },
-          { angle: PI * 1.88, dist: 100, width: 70, height: 16 },
-          { angle: PI * 1.98, dist: 75, width: 75, height: 16 },
-        ],
-        collectibles: [
-          { angle: PI * 0.58, dist: 256 },
-          { angle: PI * 0.74, dist: 239 },
-          { angle: PI * 0.90, dist: 221 },
-          { angle: PI * 1.06, dist: 203 },
-          { angle: PI * 1.22, dist: 185 },
-          { angle: PI * 1.38, dist: 167 },
-          { angle: PI * 1.53, dist: 149 },
-          { angle: PI * 1.67, dist: 130 },
-          { angle: PI * 1.81, dist: 110 },
-          { angle: PI * 1.93, dist: 87 },
-        ],
-        hazards: [
-          { angle: PI * 0.82, dist: 228, width: 55 },
-          { angle: PI * 1.30, dist: 174, width: 50 },
-          { angle: PI * 1.74, dist: 118, width: 50 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 265 },
-        exit: { angle: PI * 1.98, dist: 50 },
-      },
-      {
-        id: 'amp-surge',
-        name: 'Amp Surge',
-        bpm: 150,
-        platforms: [
-          { angle: PI * 0.5,  dist: 268, width: 110, height: 18 },  // START
-          { angle: PI * 0.64, dist: 252, width: 72, height: 15 },
-          { angle: PI * 0.78, dist: 236, width: 72, height: 15 },
-          { angle: PI * 0.92, dist: 220, width: 70, height: 15 },
-          { angle: PI * 1.06, dist: 204, width: 70, height: 15 },
-          { angle: PI * 1.20, dist: 188, width: 68, height: 15 },
-          { angle: PI * 1.34, dist: 172, width: 68, height: 15 },
-          { angle: PI * 1.48, dist: 155, width: 65, height: 15 },
-          { angle: PI * 1.62, dist: 138, width: 65, height: 15 },
-          { angle: PI * 1.76, dist: 118, width: 65, height: 15 },
-          { angle: PI * 1.88, dist: 98, width: 65, height: 15 },
-          { angle: PI * 1.98, dist: 75, width: 72, height: 15 },
-        ],
-        collectibles: [
-          { angle: PI * 0.57, dist: 260 },
-          { angle: PI * 0.71, dist: 244 },
-          { angle: PI * 0.85, dist: 228 },
-          { angle: PI * 0.99, dist: 212 },
-          { angle: PI * 1.13, dist: 196 },
-          { angle: PI * 1.27, dist: 180 },
-          { angle: PI * 1.41, dist: 163 },
-          { angle: PI * 1.55, dist: 146 },
-          { angle: PI * 1.69, dist: 128 },
-          { angle: PI * 1.82, dist: 108 },
-          { angle: PI * 1.93, dist: 86 },
-        ],
-        hazards: [
-          { angle: PI * 0.78, dist: 234, width: 50 },
-          { angle: PI * 1.20, dist: 186, width: 48 },
-          { angle: PI * 1.62, dist: 136, width: 48 },
-          { angle: PI * 1.88, dist: 96, width: 45 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 268 },
-        exit: { angle: PI * 1.98, dist: 50 },
-      },
-      {
-        id: 'feedback-loop',
-        name: 'Feedback Loop',
-        bpm: 160,
-        platforms: [
-          { angle: PI * 0.5,  dist: 265, width: 105, height: 18 },  // START
-          { angle: PI * 0.63, dist: 250, width: 68, height: 15 },
-          { angle: PI * 0.76, dist: 235, width: 68, height: 15 },
-          { angle: PI * 0.89, dist: 220, width: 65, height: 15 },
-          { angle: PI * 1.02, dist: 205, width: 65, height: 15 },
-          { angle: PI * 1.16, dist: 190, width: 62, height: 15 },
-          { angle: PI * 1.30, dist: 175, width: 62, height: 15 },
-          { angle: PI * 1.44, dist: 158, width: 60, height: 15 },
-          { angle: PI * 1.58, dist: 140, width: 60, height: 15 },
-          { angle: PI * 1.72, dist: 122, width: 60, height: 15 },
-          { angle: PI * 1.84, dist: 102, width: 60, height: 15 },
-          { angle: PI * 1.96, dist: 78, width: 68, height: 15 },
-        ],
-        collectibles: [
-          { angle: PI * 0.56, dist: 257 },
-          { angle: PI * 0.70, dist: 242 },
-          { angle: PI * 0.82, dist: 227 },
-          { angle: PI * 0.96, dist: 212 },
-          { angle: PI * 1.09, dist: 197 },
-          { angle: PI * 1.23, dist: 182 },
-          { angle: PI * 1.37, dist: 166 },
-          { angle: PI * 1.51, dist: 149 },
-          { angle: PI * 1.65, dist: 131 },
-          { angle: PI * 1.78, dist: 112 },
-          { angle: PI * 1.90, dist: 90 },
-        ],
-        hazards: [
-          { angle: PI * 0.76, dist: 233, width: 48 },
-          { angle: PI * 1.16, dist: 188, width: 48 },
-          { angle: PI * 1.58, dist: 138, width: 48 },
-          { angle: PI * 1.84, dist: 100, width: 45 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 265 },
-        exit: { angle: PI * 1.96, dist: 52 },
-      },
+      { id: 'voltage-ride',   name: 'Voltage Ride',   bpm: 140, ...generateSong(2001, 1) },
+      { id: 'amp-surge',      name: 'Amp Surge',      bpm: 150, ...generateSong(2002, 1) },
+      { id: 'feedback-loop',  name: 'Feedback Loop',  bpm: 160, ...generateSong(2003, 1.5) },
     ],
   },
   {
@@ -248,121 +158,9 @@ export const RECORDS = [
     grooveColor: 0x3a1d3e,
     labelColor: 0xf5c518,
     songs: [
-      {
-        id: 'golden-hour',
-        name: 'Golden Hour',
-        bpm: 110,
-        platforms: [
-          { angle: PI * 0.5,  dist: 260, width: 130, height: 20 },  // START
-          { angle: PI * 0.70, dist: 240, width: 90, height: 18 },
-          { angle: PI * 0.90, dist: 220, width: 90, height: 18 },
-          { angle: PI * 1.10, dist: 198, width: 85, height: 18 },
-          { angle: PI * 1.30, dist: 176, width: 85, height: 18 },
-          { angle: PI * 1.50, dist: 154, width: 80, height: 18 },
-          { angle: PI * 1.68, dist: 130, width: 80, height: 18 },
-          { angle: PI * 1.84, dist: 106, width: 80, height: 18 },
-          { angle: PI * 1.96, dist: 80, width: 80, height: 18 },
-        ],
-        collectibles: [
-          { angle: PI * 0.60, dist: 250 },
-          { angle: PI * 0.80, dist: 230 },
-          { angle: PI * 1.00, dist: 209 },
-          { angle: PI * 1.20, dist: 187 },
-          { angle: PI * 1.40, dist: 165 },
-          { angle: PI * 1.59, dist: 142 },
-          { angle: PI * 1.76, dist: 118 },
-          { angle: PI * 1.90, dist: 93 },
-        ],
-        hazards: [
-          { angle: PI * 0.90, dist: 218, width: 58 },
-          { angle: PI * 1.50, dist: 152, width: 55 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 260 },
-        exit: { angle: PI * 1.96, dist: 55 },
-      },
-      {
-        id: 'sunset-spin',
-        name: 'Sunset Spin',
-        bpm: 125,
-        platforms: [
-          { angle: PI * 0.5,  dist: 265, width: 115, height: 18 },  // START
-          { angle: PI * 0.66, dist: 248, width: 78, height: 16 },
-          { angle: PI * 0.82, dist: 230, width: 78, height: 16 },
-          { angle: PI * 0.98, dist: 212, width: 75, height: 16 },
-          { angle: PI * 1.14, dist: 194, width: 75, height: 16 },
-          { angle: PI * 1.30, dist: 175, width: 72, height: 16 },
-          { angle: PI * 1.46, dist: 155, width: 72, height: 16 },
-          { angle: PI * 1.60, dist: 135, width: 70, height: 16 },
-          { angle: PI * 1.74, dist: 115, width: 70, height: 16 },
-          { angle: PI * 1.88, dist: 95, width: 70, height: 16 },
-          { angle: PI * 1.98, dist: 72, width: 75, height: 16 },
-        ],
-        collectibles: [
-          { angle: PI * 0.58, dist: 256 },
-          { angle: PI * 0.74, dist: 239 },
-          { angle: PI * 0.90, dist: 221 },
-          { angle: PI * 1.06, dist: 203 },
-          { angle: PI * 1.22, dist: 184 },
-          { angle: PI * 1.38, dist: 165 },
-          { angle: PI * 1.53, dist: 145 },
-          { angle: PI * 1.67, dist: 125 },
-          { angle: PI * 1.81, dist: 105 },
-          { angle: PI * 1.93, dist: 83 },
-        ],
-        hazards: [
-          { angle: PI * 0.82, dist: 228, width: 52 },
-          { angle: PI * 1.30, dist: 173, width: 50 },
-          { angle: PI * 1.74, dist: 113, width: 50 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 265 },
-        exit: { angle: PI * 1.98, dist: 48 },
-      },
-      {
-        id: 'encore',
-        name: 'Encore',
-        bpm: 170,
-        // Hardest level — small platforms, tight spacing, many hazards
-        platforms: [
-          { angle: PI * 0.5,  dist: 268, width: 100, height: 16 },  // START
-          { angle: PI * 0.62, dist: 254, width: 58, height: 14 },
-          { angle: PI * 0.74, dist: 240, width: 58, height: 14 },
-          { angle: PI * 0.86, dist: 226, width: 55, height: 14 },
-          { angle: PI * 0.98, dist: 212, width: 55, height: 14 },
-          { angle: PI * 1.10, dist: 198, width: 55, height: 14 },
-          { angle: PI * 1.22, dist: 184, width: 52, height: 14 },
-          { angle: PI * 1.34, dist: 170, width: 52, height: 14 },
-          { angle: PI * 1.46, dist: 155, width: 52, height: 14 },
-          { angle: PI * 1.58, dist: 140, width: 50, height: 14 },
-          { angle: PI * 1.68, dist: 125, width: 50, height: 14 },
-          { angle: PI * 1.78, dist: 108, width: 50, height: 14 },
-          { angle: PI * 1.88, dist: 90, width: 55, height: 14 },
-          { angle: PI * 1.97, dist: 68, width: 60, height: 14 },
-        ],
-        collectibles: [
-          { angle: PI * 0.56, dist: 261 },
-          { angle: PI * 0.68, dist: 247 },
-          { angle: PI * 0.80, dist: 233 },
-          { angle: PI * 0.92, dist: 219 },
-          { angle: PI * 1.04, dist: 205 },
-          { angle: PI * 1.16, dist: 191 },
-          { angle: PI * 1.28, dist: 177 },
-          { angle: PI * 1.40, dist: 162 },
-          { angle: PI * 1.52, dist: 147 },
-          { angle: PI * 1.63, dist: 132 },
-          { angle: PI * 1.73, dist: 116 },
-          { angle: PI * 1.83, dist: 99 },
-          { angle: PI * 1.93, dist: 79 },
-        ],
-        hazards: [
-          { angle: PI * 0.74, dist: 238, width: 42 },
-          { angle: PI * 1.10, dist: 196, width: 42 },
-          { angle: PI * 1.46, dist: 153, width: 42 },
-          { angle: PI * 1.68, dist: 123, width: 40 },
-          { angle: PI * 1.88, dist: 88, width: 40 },
-        ],
-        playerStart: { angle: PI * 0.5, dist: 268 },
-        exit: { angle: PI * 1.97, dist: 42 },
-      },
+      { id: 'golden-hour',  name: 'Golden Hour',  bpm: 110, ...generateSong(3001, 1.5) },
+      { id: 'sunset-spin',  name: 'Sunset Spin',  bpm: 155, ...generateSong(3002, 2) },
+      { id: 'encore',       name: 'Encore',       bpm: 170, ...generateSong(3003, 2) },
     ],
   },
 ];

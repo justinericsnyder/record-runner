@@ -1,10 +1,10 @@
-export const GAME_WIDTH = 800;
-export const GAME_HEIGHT = 600;
+export const GAME_WIDTH = 1000;
+export const GAME_HEIGHT = 800;
 export const GRAVITY = 900;
-export const PLAYER_SPEED = 220;
-export const JUMP_VELOCITY = -440;
-export const RECORD_CENTER_X = 400;
-export const RECORD_CENTER_Y = 300;
-export const RECORD_RADIUS = 280;
-// Rotation speed in radians/sec — 33 RPM vinyl = ~3.46 rad/s, we slow it way down for gameplay
-export const RECORD_ROTATION_SPEED = 0.15;
+export const PLAYER_SPEED = 230;
+export const JUMP_VELOCITY = -450;
+export const RECORD_CENTER_X = 500;
+export const RECORD_CENTER_Y = 400;
+export const RECORD_RADIUS = 370;
+// Rotation speed in radians/sec — slow enough for gameplay
+export const RECORD_ROTATION_SPEED = 0.12;
