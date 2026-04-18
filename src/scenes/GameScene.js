@@ -5,6 +5,24 @@ import {
 } from '../config.js';
 import { RECORDS } from '../levels.js';
 
+// Power-up config
+const POWERUP_DURATION = 4000; // ms
+const POWERUP_COLORS = {
+  stop: 0x00ccff,
+  slow: 0x88ff44,
+  fast: 0xff8800,
+};
+const POWERUP_LABELS = {
+  stop: '⏸ FREEZE',
+  slow: '⏪ SLOW',
+  fast: '⏩ FAST',
+};
+const POWERUP_SPEED_MULT = {
+  stop: 0,
+  slow: 0.35,
+  fast: 2.2,
+};
+
 export default class GameScene extends Phaser.Scene {
   constructor() {
     super('Game');
@@ -20,36 +38,34 @@ export default class GameScene extends Phaser.Scene {
   create() {
     const record = RECORDS[this.recordIndex];
     const song = record.songs[this.songIndex];
-    this.currentAngle = 0; // current rotation of the record in radians
+    this.currentAngle = 0;
 
     this.cameras.main.setBackgroundColor(Phaser.Display.Color.IntegerToColor(record.color).rgba);
 
-    // Draw the record disc (visual only, spins via tween)
     this.recordDisc = this.createRecordDisc(record);
-
-    // HUD (on top of everything)
     this.createHUD(record, song);
 
-    // Store polar definitions so we can reposition every frame
+    // Polar definitions
     this.platformDefs = song.platforms.map(p => ({ ...p }));
     this.collectibleDefs = song.collectibles.map(c => ({ ...c, alive: true }));
     this.hazardDefs = song.hazards.map(h => ({ ...h }));
+    this.powerupDefs = (song.powerups || []).map(p => ({ ...p, alive: true }));
     this.exitDef = { ...song.exit };
     this.playerStartDef = { ...song.playerStart };
 
-    // Create platform physics bodies (kinematic — we move them manually)
+    // Platforms
     this.platformBodies = [];
     this.platformDefs.forEach((def) => {
-      const sprite = this.add.rectangle(0, 0, def.width, def.height, 0x333355, 1);
-      sprite.setStrokeStyle(1, 0x555577, 0.5);
-      const body = this.physics.add.existing(sprite, false);
+      const sprite = this.add.rectangle(0, 0, def.width, def.height, 0x44446a, 1);
+      sprite.setStrokeStyle(1, 0x6666aa, 0.4);
+      this.physics.add.existing(sprite, false);
       sprite.body.setImmovable(true);
       sprite.body.setAllowGravity(false);
       sprite.body.moves = false;
       this.platformBodies.push(sprite);
     });
 
-    // Collectible sprites
+    // Collectibles
     this.collectibleSprites = [];
     this.collectibleDefs.forEach(() => {
       const note = this.physics.add.sprite(0, 0, 'note').setScale(0.9);
@@ -59,38 +75,59 @@ export default class GameScene extends Phaser.Scene {
       this.collectibleSprites.push(note);
     });
 
-    // Hazard sprites
+    // Hazards
     this.hazardSprites = [];
     this.hazardDefs.forEach((def) => {
       const hz = this.physics.add.sprite(0, 0, 'hazard');
-      hz.setDisplaySize(def.width, 8);
+      hz.setDisplaySize(def.width, 12);
       hz.body.setAllowGravity(false);
       hz.body.setImmovable(true);
       hz.body.moves = false;
       this.hazardSprites.push(hz);
     });
 
-    // Exit sprite
+    // Power-ups
+    this.powerupSprites = [];
+    this.powerupDefs.forEach((def) => {
+      const key = `powerup_${def.type}`;
+      const pu = this.physics.add.sprite(0, 0, key).setScale(1);
+      pu.body.setAllowGravity(false);
+      pu.body.setImmovable(true);
+      pu.body.moves = false;
+      pu.setDepth(5);
+      // Bobbing animation
+      this.tweens.add({
+        targets: pu,
+        y: '-=6',
+        duration: 600 + Math.random() * 300,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+      this.powerupSprites.push(pu);
+    });
+
+    // Exit
     this.exitSprite = this.physics.add.sprite(0, 0, 'exit');
     this.exitSprite.body.setAllowGravity(false);
     this.exitSprite.body.setImmovable(true);
     this.exitSprite.body.moves = false;
     this.tweens.add({
       targets: this.exitSprite,
-      scaleX: 1.2, scaleY: 1.2,
-      duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      scaleX: 1.3, scaleY: 1.3,
+      duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
-    // Position everything at angle 0
+    // Position everything
     this.positionAllObjects(0);
 
-    // Player — spawns at the starting platform position
+    // Player
     const startPos = this.polarToWorld(this.playerStartDef.angle, this.playerStartDef.dist, 0);
-    this.player = this.physics.add.sprite(startPos.x, startPos.y - 25, 'player');
+    this.player = this.physics.add.sprite(startPos.x, startPos.y - 22, 'player');
     this.player.setCollideWorldBounds(false);
     this.player.setBounce(0.1);
-    this.player.body.setSize(20, 34);
-    this.player.body.setOffset(2, 2);
+    this.player.body.setSize(22, 30);
+    this.player.body.setOffset(3, 2);
     this.player.setDepth(10);
 
     // Collisions
@@ -98,6 +135,7 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.collectibleSprites, this.collectNote, null, this);
     this.physics.add.overlap(this.player, this.hazardSprites, this.hitHazard, null, this);
     this.physics.add.overlap(this.player, this.exitSprite, this.reachExit, null, this);
+    this.physics.add.overlap(this.player, this.powerupSprites, this.collectPowerup, null, this);
 
     // Input
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -112,32 +150,39 @@ export default class GameScene extends Phaser.Scene {
     this.jumpBufferTime = 0;
     this.isHurt = false;
     this.exitReached = false;
-    this.recordStarted = false; // rotation doesn't begin until first input
+    this.recordStarted = false;
+    this.standingOnPlatform = false;
 
-    // "Press to start" prompt
+    // Power-up state
+    this.activePowerup = null;       // { type, timer }
+    this.speedMultiplier = 1;
+
+    // Start prompt
     this.startPrompt = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40,
       '← → to move  •  ↑ / Space to jump', {
         fontSize: '13px', color: '#aaaacc', fontFamily: 'monospace',
       }).setOrigin(0.5).setDepth(100);
     this.tweens.add({
-      targets: this.startPrompt,
-      alpha: 0.3,
-      duration: 800,
-      yoyo: true,
-      repeat: -1,
+      targets: this.startPrompt, alpha: 0.3,
+      duration: 800, yoyo: true, repeat: -1,
     });
 
     // Particles
     this.noteParticles = this.add.particles(0, 0, 'particle', {
       speed: { min: 50, max: 150 },
-      scale: { start: 0.8, end: 0 },
+      scale: { start: 0.6, end: 0 },
       lifespan: 400,
       tint: 0xf5c518,
       emitting: false,
     });
+    this.powerupParticles = this.add.particles(0, 0, 'particle', {
+      speed: { min: 30, max: 100 },
+      scale: { start: 0.5, end: 0 },
+      lifespan: 500,
+      emitting: false,
+    });
   }
 
-  /** Convert polar (angle, dist) + current record rotation to screen x,y */
   polarToWorld(angle, dist, rotation) {
     const a = angle + rotation;
     return {
@@ -146,9 +191,7 @@ export default class GameScene extends Phaser.Scene {
     };
   }
 
-  /** Reposition all rotating objects based on current record angle */
   positionAllObjects(rotation) {
-    // Platforms — rotation is base radial angle + record spin + per-platform tilt
     this.platformDefs.forEach((def, i) => {
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
       const sprite = this.platformBodies[i];
@@ -158,7 +201,6 @@ export default class GameScene extends Phaser.Scene {
       sprite.body.reset(pos.x, pos.y);
     });
 
-    // Collectibles
     this.collectibleDefs.forEach((def, i) => {
       if (!def.alive) return;
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
@@ -168,7 +210,6 @@ export default class GameScene extends Phaser.Scene {
       sprite.body.reset(pos.x, pos.y);
     });
 
-    // Hazards
     this.hazardDefs.forEach((def, i) => {
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
       const sprite = this.hazardSprites[i];
@@ -178,7 +219,18 @@ export default class GameScene extends Phaser.Scene {
       sprite.body.reset(pos.x, pos.y);
     });
 
-    // Exit
+    this.powerupDefs.forEach((def, i) => {
+      if (!def.alive) return;
+      const pos = this.polarToWorld(def.angle, def.dist, rotation);
+      const sprite = this.powerupSprites[i];
+      // Keep base position for the bobbing tween to offset from
+      sprite.setData('baseX', pos.x);
+      sprite.setData('baseY', pos.y);
+      sprite.x = pos.x;
+      // y is managed by tween offset, but we reset the base
+      sprite.body.reset(pos.x, sprite.y);
+    });
+
     const exitPos = this.polarToWorld(this.exitDef.angle, this.exitDef.dist, rotation);
     this.exitSprite.x = exitPos.x;
     this.exitSprite.y = exitPos.y;
@@ -189,62 +241,164 @@ export default class GameScene extends Phaser.Scene {
     const cx = RECORD_CENTER_X;
     const cy = RECORD_CENTER_Y;
     const container = this.add.container(cx, cy);
-
     const g = this.add.graphics();
-    // Outer disc
+
+    // Outer edge bevel
+    g.fillStyle(0x0a0a18, 1);
+    g.fillCircle(0, 0, RECORD_RADIUS + 3);
+    // Main disc
     g.fillStyle(0x111122, 1);
     g.fillCircle(0, 0, RECORD_RADIUS);
-    // Grooves
-    for (let r = RECORD_RADIUS - 5; r > 60; r -= 7) {
-      g.lineStyle(1, 0xffffff, 0.04);
+    // Grooves with varying opacity for realism
+    for (let r = RECORD_RADIUS - 4; r > 65; r -= 5) {
+      const alpha = 0.02 + Math.sin(r * 0.1) * 0.015;
+      g.lineStyle(1, 0xffffff, alpha);
       g.strokeCircle(0, 0, r);
     }
+    // Subtle sheen (light reflection arc)
+    g.lineStyle(2, 0xffffff, 0.06);
+    g.beginPath();
+    g.arc(0, 0, RECORD_RADIUS * 0.7, -0.8, -0.3, false);
+    g.strokePath();
+    g.lineStyle(1, 0xffffff, 0.04);
+    g.beginPath();
+    g.arc(0, 0, RECORD_RADIUS * 0.5, -0.9, -0.2, false);
+    g.strokePath();
     // Label
-    g.fillStyle(record.labelColor, 0.15);
+    g.fillStyle(record.labelColor, 0.18);
     g.fillCircle(0, 0, 70);
+    g.lineStyle(1, record.labelColor, 0.1);
+    g.strokeCircle(0, 0, 60);
     // Center hole
-    g.fillStyle(0x000000, 0.4);
+    g.fillStyle(0x000000, 0.5);
     g.fillCircle(0, 0, 8);
+    g.lineStyle(1, 0x333344, 0.5);
+    g.strokeCircle(0, 0, 8);
 
     container.add(g);
     container.setDepth(-1);
-
-    // The visual disc spins via tween (synced with our angle in update)
     return container;
   }
 
   createHUD(record, song) {
-    const hudDepth = 100;
-    this.add.text(12, 10, `${record.name}`, {
+    const d = 100;
+    this.add.text(12, 10, record.name, {
       fontSize: '12px', color: '#888899', fontFamily: 'monospace',
-    }).setDepth(hudDepth);
+    }).setDepth(d);
     this.add.text(12, 28, `♪ ${song.name}`, {
       fontSize: '16px', color: '#e94560', fontFamily: 'monospace', fontStyle: 'bold',
-    }).setDepth(hudDepth);
-    const totalSongs = record.songs.length;
-    this.add.text(12, 50, `Track ${this.songIndex + 1} / ${totalSongs}`, {
+    }).setDepth(d);
+    this.add.text(12, 50, `Track ${this.songIndex + 1} / ${record.songs.length}`, {
       fontSize: '11px', color: '#666677', fontFamily: 'monospace',
-    }).setDepth(hudDepth);
+    }).setDepth(d);
     this.scoreText = this.add.text(GAME_WIDTH - 12, 10, `Score: ${this.score}`, {
       fontSize: '14px', color: '#f5c518', fontFamily: 'monospace',
-    }).setOrigin(1, 0).setDepth(hudDepth);
+    }).setOrigin(1, 0).setDepth(d);
     this.livesText = this.add.text(GAME_WIDTH - 12, 30, `♥ ${this.lives}`, {
       fontSize: '14px', color: '#e94560', fontFamily: 'monospace',
-    }).setOrigin(1, 0).setDepth(hudDepth);
+    }).setOrigin(1, 0).setDepth(d);
+
+    // Power-up indicator (hidden until active)
+    this.powerupText = this.add.text(GAME_WIDTH / 2, 14, '', {
+      fontSize: '15px', color: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setDepth(d).setAlpha(0);
+
+    this.powerupTimerBar = this.add.rectangle(GAME_WIDTH / 2, 36, 120, 6, 0xffffff, 0.5)
+      .setOrigin(0.5, 0).setDepth(d).setVisible(false);
   }
 
-  onPlatformCollide(player, platform) {
-    // When standing on a rotating platform, carry the player along
-    // We store a flag so update() can apply rotational velocity
+  onPlatformCollide() {
     this.standingOnPlatform = true;
   }
+
+  // ── Power-up logic ──
+
+  collectPowerup(player, puSprite) {
+    const idx = this.powerupSprites.indexOf(puSprite);
+    if (idx < 0 || !this.powerupDefs[idx].alive) return;
+
+    this.powerupDefs[idx].alive = false;
+    puSprite.destroy();
+
+    const type = this.powerupDefs[idx].type;
+    const color = POWERUP_COLORS[type];
+
+    // Particle burst
+    this.powerupParticles.setParticleTint(color);
+    this.powerupParticles.emitParticleAt(puSprite.x, puSprite.y, 12);
+
+    // Activate effect
+    this.activatePowerup(type);
+
+    this.score += 50;
+    this.scoreText.setText(`Score: ${this.score}`);
+    this.cameras.main.flash(100,
+      (color >> 16) & 0xff,
+      (color >> 8) & 0xff,
+      color & 0xff, true);
+  }
+
+  activatePowerup(type) {
+    // Cancel existing power-up timer if any
+    if (this.activePowerup && this.activePowerup.timerEvent) {
+      this.activePowerup.timerEvent.remove(false);
+    }
+
+    this.speedMultiplier = POWERUP_SPEED_MULT[type];
+    const color = POWERUP_COLORS[type];
+
+    // HUD indicator
+    this.powerupText.setText(POWERUP_LABELS[type]);
+    this.powerupText.setColor(`#${color.toString(16).padStart(6, '0')}`);
+    this.powerupText.setAlpha(1);
+    this.powerupTimerBar.setVisible(true);
+    this.powerupTimerBar.setFillStyle(color, 0.6);
+    this.powerupTimerBar.setSize(120, 6);
+
+    // Shrink the timer bar over the duration
+    this.tweens.killTweensOf(this.powerupTimerBar);
+    this.tweens.add({
+      targets: this.powerupTimerBar,
+      displayWidth: 0,
+      duration: POWERUP_DURATION,
+      ease: 'Linear',
+    });
+
+    // Flash the text near the end
+    this.time.delayedCall(POWERUP_DURATION - 1000, () => {
+      if (this.activePowerup && this.activePowerup.type === type) {
+        this.tweens.add({
+          targets: this.powerupText,
+          alpha: 0.3,
+          duration: 150,
+          yoyo: true,
+          repeat: 4,
+        });
+      }
+    });
+
+    const timerEvent = this.time.delayedCall(POWERUP_DURATION, () => {
+      this.deactivatePowerup();
+    });
+
+    this.activePowerup = { type, timerEvent };
+  }
+
+  deactivatePowerup() {
+    this.speedMultiplier = 1;
+    this.activePowerup = null;
+    this.powerupText.setAlpha(0);
+    this.powerupTimerBar.setVisible(false);
+  }
+
+  // ── Main update loop ──
 
   update(time, delta) {
     if (this.exitReached) return;
 
     const dt = delta / 1000;
 
-    // Detect first input to start the record spinning
+    // Input
     const left = this.cursors.left.isDown || this.wasd.left.isDown;
     const right = this.cursors.right.isDown || this.wasd.right.isDown;
     const jumpPressed = Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
@@ -259,29 +413,23 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // Only advance rotation once the player has moved
+    // Advance rotation with speed multiplier from power-ups
     if (this.recordStarted) {
-      this.currentAngle += RECORD_ROTATION_SPEED * dt;
+      this.currentAngle += RECORD_ROTATION_SPEED * this.speedMultiplier * dt;
     }
 
-    // Sync visual disc
     this.recordDisc.setAngle(Phaser.Math.RadToDeg(this.currentAngle));
-
-    // Reposition all objects
     this.positionAllObjects(this.currentAngle);
 
     if (this.isHurt) return;
 
     const onGround = this.player.body.blocked.down || this.player.body.touching.down;
 
-    // Coyote time
     if (onGround) {
       this.coyoteTime = 100;
     } else {
       this.coyoteTime -= delta;
     }
-
-    // Input already read above
 
     if (left) {
       this.player.setVelocityX(-PLAYER_SPEED);
@@ -290,45 +438,38 @@ export default class GameScene extends Phaser.Scene {
       this.player.setVelocityX(PLAYER_SPEED);
       this.player.setFlipX(false);
     } else {
-      // When standing on a rotating platform, inherit some rotational motion
       if (onGround && this.standingOnPlatform) {
-        // Approximate tangential velocity at player's distance from center
         const dx = this.player.x - RECORD_CENTER_X;
         const dy = this.player.y - RECORD_CENTER_Y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const tangentSpeed = RECORD_ROTATION_SPEED * dist;
-        // Tangent direction (perpendicular to radius)
+        const effectiveSpeed = RECORD_ROTATION_SPEED * this.speedMultiplier;
+        const tangentSpeed = effectiveSpeed * dist;
         const angle = Math.atan2(dy, dx);
         const vx = -Math.sin(angle) * tangentSpeed;
         const vy = Math.cos(angle) * tangentSpeed;
         this.player.setVelocityX(vx);
-        // Only apply vertical component if it won't fight gravity too much
         if (vy < 0) {
           this.player.body.velocity.y += vy * 0.3;
         }
       } else {
-        this.player.setVelocityX(this.player.body.velocity.x * 0.85); // friction in air
+        this.player.setVelocityX(this.player.body.velocity.x * 0.85);
       }
     }
 
-    // Jump buffer
     if (jumpPressed) {
       this.jumpBufferTime = 100;
     } else {
       this.jumpBufferTime -= delta;
     }
 
-    // Jump
     if (this.jumpBufferTime > 0 && this.coyoteTime > 0) {
       this.player.setVelocityY(JUMP_VELOCITY);
       this.coyoteTime = 0;
       this.jumpBufferTime = 0;
     }
 
-    // Reset platform standing flag (re-set by collision callback)
     this.standingOnPlatform = false;
 
-    // Fall off screen or too far from record
     const dx = this.player.x - RECORD_CENTER_X;
     const dy = this.player.y - RECORD_CENTER_Y;
     const distFromCenter = Math.sqrt(dx * dx + dy * dy);
