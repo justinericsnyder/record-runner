@@ -124,11 +124,8 @@ export default class SpinScene extends Phaser.Scene {
       }
     });
 
-    // Add arc wall collisions with player
-    const arcSprites = this.arcWallSegments.map(s => s.sprite);
-    if (arcSprites.length > 0) {
-      this.physics.add.collider(this.player, arcSprites);
-    }
+    // Add arc wall collisions with player — deferred until after player creation
+    this._pendingArcSprites = arcSprites;
 
     // Exit
     this.exitSprite = this.physics.add.sprite(0, 0, 'exit');
@@ -161,6 +158,11 @@ export default class SpinScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.exitSprite, this.reachExit, null, this);
     this.physics.add.overlap(this.player, this.powerupSprites, this.collectPowerup, null, this);
     this.physics.add.overlap(this.player, this.springSprites, this.hitSpring, null, this);
+
+    // Arc wall collisions (deferred from earlier since player didn't exist yet)
+    if (this._pendingArcSprites && this._pendingArcSprites.length > 0) {
+      this.physics.add.collider(this.player, this._pendingArcSprites);
+    }
 
     // ── Drag-to-rotate input ──
     this.isDragging = false;
