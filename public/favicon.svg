@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Outer disc -->
+  <circle cx="32" cy="32" r="30" fill="#111122" stroke="#000" stroke-width="2"/>
+  <!-- Grooves -->
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#2a2a44" stroke-width="1"/>
+  <circle cx="32" cy="32" r="22" fill="none" stroke="#2a2a44" stroke-width="1"/>
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#2a2a44" stroke-width="1"/>
+  <circle cx="32" cy="32" r="14" fill="none" stroke="#2a2a44" stroke-width="1"/>
+  <!-- Highlight arc -->
+  <path d="M 18 14 A 22 22 0 0 1 28 10" fill="none" stroke="#3a3a5c" stroke-width="2" stroke-linecap="round"/>
+  <!-- Label -->
+  <circle cx="32" cy="32" r="10" fill="#e94560"/>
+  <circle cx="32" cy="32" r="10" fill="none" stroke="#000" stroke-width="1.5" opacity="0.4"/>
+  <!-- Label highlight -->
+  <circle cx="29" cy="29" r="3" fill="#fff" opacity="0.25"/>
+  <!-- Center hole -->
+  <circle cx="32" cy="32" r="3" fill="#1a1a2e"/>
+  <circle cx="32" cy="32" r="3" fill="none" stroke="#333" stroke-width="1"/>
+</svg>
