@@ -276,7 +276,7 @@ export default class SpinScene extends Phaser.Scene {
 
     // Start procedural music for this level
     const songSeed = song.bpm * 1000 + this.recordIndex * 100 + this.songIndex;
-    playLevelMusic(songSeed, song.bpm, this.recordIndex);
+    playLevelMusic(songSeed, song.bpm, record.name, song.name);
 
     // Stop music when leaving scene
     this.events.on('shutdown', stopMusic);
