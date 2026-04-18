@@ -171,6 +171,13 @@ export default class SpinScene extends Phaser.Scene {
     this.dragSamples = [];
 
     this.input.on('pointerdown', (pointer) => {
+      // Ignore if touch started on a movement button
+      if (this._touchBtnLeft || this._touchBtnRight) {
+        const lx = 80, rx = GAME_WIDTH - 80, by = GAME_HEIGHT - 100, br = 40;
+        const onLeft = Math.hypot(pointer.x - lx, pointer.y - by) < br;
+        const onRight = Math.hypot(pointer.x - rx, pointer.y - by) < br;
+        if (onLeft || onRight) return;
+      }
       this.isDragging = true;
       this.lastDragAngle = Math.atan2(
         pointer.y - RECORD_CENTER_Y,
@@ -226,11 +233,26 @@ export default class SpinScene extends Phaser.Scene {
       arrowRight: Phaser.Input.Keyboard.KeyCodes.RIGHT,
     });
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 35,
-      'Click & drag to spin  •  A / D to move', {
-        fontSize: '14px', color: '#aaaacc', fontFamily: 'monospace',
-      }).setOrigin(0.5).setDepth(100);
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 16,
+    // Touch state
+    this.touchLeft = false;
+    this.touchRight = false;
+
+    // Detect if touch device
+    const isTouchDevice = !this.sys.game.device.os.desktop;
+
+    if (isTouchDevice) {
+      this.createTouchControls();
+      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 60,
+        'Drag to spin  •  Buttons to move', {
+          fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
+        }).setOrigin(0.5).setDepth(100);
+    } else {
+      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 35,
+        'Click & drag to spin  •  A / D to move', {
+          fontSize: '14px', color: '#aaaacc', fontFamily: 'monospace',
+        }).setOrigin(0.5).setDepth(100);
+    }
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - (isTouchDevice ? 42 : 16),
       'SPIN MODE', {
         fontSize: '11px', color: '#f5c518', fontFamily: 'monospace', fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(100);
@@ -415,6 +437,39 @@ export default class SpinScene extends Phaser.Scene {
     }).setOrigin(1, 0).setDepth(d);
   }
 
+  createTouchControls() {
+    const d = 150;
+    const btnSize = 70;
+    const btnY = GAME_HEIGHT - 100;
+    const btnAlpha = 0.35;
+
+    // Left button
+    const leftBtn = this.add.circle(80, btnY, btnSize / 2, 0xffffff, btnAlpha)
+      .setDepth(d).setInteractive().setScrollFactor(0);
+    this.add.text(80, btnY, '◀', {
+      fontSize: '28px', color: '#ffffff', fontFamily: 'monospace',
+    }).setOrigin(0.5).setDepth(d + 1).setScrollFactor(0);
+
+    leftBtn.on('pointerdown', () => { this.touchLeft = true; });
+    leftBtn.on('pointerup', () => { this.touchLeft = false; });
+    leftBtn.on('pointerout', () => { this.touchLeft = false; });
+
+    // Right button
+    const rightBtn = this.add.circle(GAME_WIDTH - 80, btnY, btnSize / 2, 0xffffff, btnAlpha)
+      .setDepth(d).setInteractive().setScrollFactor(0);
+    this.add.text(GAME_WIDTH - 80, btnY, '▶', {
+      fontSize: '28px', color: '#ffffff', fontFamily: 'monospace',
+    }).setOrigin(0.5).setDepth(d + 1).setScrollFactor(0);
+
+    rightBtn.on('pointerdown', () => { this.touchRight = true; });
+    rightBtn.on('pointerup', () => { this.touchRight = false; });
+    rightBtn.on('pointerout', () => { this.touchRight = false; });
+
+    // Store refs so drag handler can ignore touches on buttons
+    this._touchBtnLeft = leftBtn;
+    this._touchBtnRight = rightBtn;
+  }
+
   // ── Update ──
   update(time, delta) {
     if (this.exitReached) return;
@@ -501,10 +556,10 @@ export default class SpinScene extends Phaser.Scene {
       }
     }
 
-    // A/D horizontal movement (no jump)
+    // A/D horizontal movement + touch buttons (no jump)
     if (!this.isHurt) {
-      const moveLeft = this.keys.left.isDown || this.keys.arrowLeft.isDown;
-      const moveRight = this.keys.right.isDown || this.keys.arrowRight.isDown;
+      const moveLeft = this.keys.left.isDown || this.keys.arrowLeft.isDown || this.touchLeft;
+      const moveRight = this.keys.right.isDown || this.keys.arrowRight.isDown || this.touchRight;
       const MOVE_SPEED = 180;
 
       if (moveLeft) {

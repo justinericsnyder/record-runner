@@ -14,6 +14,13 @@ const config = {
   height: GAME_HEIGHT,
   parent: 'game-container',
   pixelArt: true,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+  input: {
+    activePointers: 3, // support multi-touch (drag + buttons)
+  },
   physics: {
     default: 'arcade',
     arcade: {

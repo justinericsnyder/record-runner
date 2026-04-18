@@ -47,7 +47,7 @@ export default class GameOverScene extends Phaser.Scene {
     retryBtn.on('pointerover', () => retryBtn.setColor('#88ffbb'));
     retryBtn.on('pointerout', () => retryBtn.setColor('#00ff88'));
     retryBtn.on('pointerdown', () => {
-      this.scene.start('Game', {
+      this.scene.start('Spin', {
         recordIndex: this.recordIndex,
         songIndex: 0,
         score: 0,
