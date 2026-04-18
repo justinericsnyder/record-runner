@@ -1,6 +1,20 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js';
 
+// Cel-shading helpers
+function darken(color, amount) {
+  const r = Math.max(0, ((color >> 16) & 0xff) - amount);
+  const g = Math.max(0, ((color >> 8) & 0xff) - amount);
+  const b = Math.max(0, (color & 0xff) - amount);
+  return (r << 16) | (g << 8) | b;
+}
+function lighten(color, amount) {
+  const r = Math.min(255, ((color >> 16) & 0xff) + amount);
+  const g = Math.min(255, ((color >> 8) & 0xff) + amount);
+  const b = Math.min(255, (color & 0xff) + amount);
+  return (r << 16) | (g << 8) | b;
+}
+
 export default class BootScene extends Phaser.Scene {
   constructor() {
     super('Boot');
@@ -18,160 +32,268 @@ export default class BootScene extends Phaser.Scene {
   }
 
   generateTextures() {
-    // ── Player: Guitar Pick ──
-    const pw = 28, ph = 34;
-    const pg = this.add.graphics();
-    // Pick body — rounded triangle shape
-    pg.fillStyle(0xe94560, 1);
-    pg.beginPath();
-    pg.moveTo(pw / 2, ph);          // bottom tip
-    pg.lineTo(1, 8);                // top-left curve
-    pg.arc(pw / 2, 8, pw / 2 - 1, Math.PI, 0, false); // rounded top
-    pg.lineTo(pw - 1, 8);           // top-right
-    pg.closePath();
-    pg.fillPath();
-    // Glossy highlight
-    pg.fillStyle(0xff6b8a, 0.6);
-    pg.beginPath();
-    pg.moveTo(pw / 2, ph - 6);
-    pg.lineTo(6, 10);
-    pg.arc(pw / 2, 10, pw / 2 - 6, Math.PI, 0, false);
-    pg.closePath();
-    pg.fillPath();
-    // Pick text/logo mark
-    pg.fillStyle(0xffffff, 0.7);
-    pg.fillCircle(pw / 2, 14, 4);
-    pg.fillStyle(0xe94560, 1);
-    pg.fillCircle(pw / 2, 14, 2);
-    // Tip accent
-    pg.fillStyle(0xcc3355, 1);
-    pg.fillTriangle(pw / 2, ph, pw / 2 - 4, ph - 6, pw / 2 + 4, ph - 6);
-    pg.generateTexture('player', pw, ph);
-    pg.destroy();
-
-    // ── Platform: Vinyl groove segment with depth ──
-    const platW = 80, platH = 18;
-    const pl = this.add.graphics();
-    // Shadow
-    pl.fillStyle(0x1a1a33, 1);
-    pl.fillRoundedRect(1, 2, platW - 2, platH - 2, 4);
-    // Main body
-    const bodyGrad = [0x3a3a5c, 0x44446a, 0x3a3a5c];
-    bodyGrad.forEach((c, idx) => {
-      pl.fillStyle(c, 1);
-      pl.fillRect(0, idx * 5 + 1, platW, 5);
-    });
-    pl.fillStyle(0x44446a, 1);
-    pl.fillRoundedRect(0, 0, platW, platH, 4);
-    // Groove lines
-    pl.lineStyle(1, 0x5555aa, 0.3);
-    for (let i = 6; i < platW - 4; i += 5) {
-      pl.lineBetween(i, 3, i, platH - 3);
-    }
-    // Top highlight
-    pl.lineStyle(1, 0x8888cc, 0.4);
-    pl.lineBetween(4, 1, platW - 4, 1);
-    // Bottom edge
-    pl.lineStyle(1, 0x222244, 0.6);
-    pl.lineBetween(4, platH - 1, platW - 4, platH - 1);
-    pl.generateTexture('platform', platW, platH);
-    pl.destroy();
-
-    // ── Music Note: Detailed eighth note ──
-    const nw = 22, nh = 28;
-    const ng = this.add.graphics();
-    // Glow
-    ng.fillStyle(0xf5c518, 0.2);
-    ng.fillCircle(8, 20, 10);
-    // Note head
-    ng.fillStyle(0xf5c518, 1);
-    ng.fillEllipse(8, 21, 12, 9);
-    // Stem
-    ng.fillStyle(0xf5c518, 1);
-    ng.fillRect(13, 3, 2.5, 18);
-    // Flag
-    ng.lineStyle(2.5, 0xf5c518, 1);
-    ng.beginPath();
-    ng.moveTo(15, 3);
-    ng.lineTo(20, 8);
-    ng.lineTo(16, 14);
-    ng.strokePath();
-    // Shine
-    ng.fillStyle(0xffffff, 0.5);
-    ng.fillEllipse(6, 19, 5, 3);
-    ng.generateTexture('note', nw, nh);
-    ng.destroy();
-
-    // ── Hazard: Vinyl scratch with sparks ──
-    const hzW = 40, hzH = 12;
-    const hz = this.add.graphics();
-    // Scratch lines
-    hz.lineStyle(2, 0xff3333, 0.9);
-    hz.lineBetween(2, 2, hzW - 2, hzH - 2);
-    hz.lineBetween(2, hzH - 2, hzW - 2, 2);
-    hz.lineStyle(1, 0xff6666, 0.5);
-    hz.lineBetween(0, hzH / 2, hzW, hzH / 2);
-    // Spark dots
-    hz.fillStyle(0xff8888, 0.8);
-    hz.fillCircle(5, 3, 2);
-    hz.fillCircle(hzW - 5, hzH - 3, 2);
-    hz.fillCircle(hzW / 2, 2, 1.5);
-    hz.generateTexture('hazard', hzW, hzH);
-    hz.destroy();
-
-    // ── Exit: Glowing label center ──
-    const exR = 20;
-    const ex = this.add.graphics();
-    // Outer glow
-    ex.fillStyle(0x00ff88, 0.15);
-    ex.fillCircle(exR, exR, exR);
-    ex.fillStyle(0x00ff88, 0.3);
-    ex.fillCircle(exR, exR, exR - 4);
-    // Main circle
-    ex.fillStyle(0x00ff88, 0.9);
-    ex.fillCircle(exR, exR, exR - 6);
-    // Inner ring
-    ex.lineStyle(2, 0xffffff, 0.3);
-    ex.strokeCircle(exR, exR, exR - 10);
-    // Center dot
-    ex.fillStyle(0x00cc66, 1);
-    ex.fillCircle(exR, exR, 4);
-    // Shine
-    ex.fillStyle(0xffffff, 0.4);
-    ex.fillCircle(exR - 4, exR - 4, 3);
-    ex.generateTexture('exit', exR * 2, exR * 2);
-    ex.destroy();
-
-    // ── Particle ──
-    const pt = this.add.graphics();
-    pt.fillStyle(0xffffff, 1);
-    pt.fillCircle(4, 4, 4);
-    pt.fillStyle(0xffffff, 0.5);
-    pt.fillCircle(4, 4, 6);
-    pt.generateTexture('particle', 10, 10);
-    pt.destroy();
-
-    // ── Power-ups ──
-    this.generatePowerUpTexture('powerup_stop', 0x00ccff, '⏸');
-    this.generatePowerUpTexture('powerup_slow', 0x88ff44, '⏪');
-    this.generatePowerUpTexture('powerup_fast', 0xff8800, '⏩');
+    this.genPlayer();
+    this.genPlatform();
+    this.genNote();
+    this.genHazard();
+    this.genExit();
+    this.genParticle();
+    this.genPowerUp('powerup_stop', 0x00ccff);
+    this.genPowerUp('powerup_slow', 0x88ff44);
+    this.genPowerUp('powerup_fast', 0xff8800);
   }
 
-  generatePowerUpTexture(key, color, symbol) {
-    const size = 30;
+  // ── Guitar Pick (cel-shaded) ──
+  genPlayer() {
+    const w = 30, h = 38;
     const g = this.add.graphics();
-    // Outer glow
-    g.fillStyle(color, 0.2);
-    g.fillCircle(size / 2, size / 2, size / 2);
-    // Ring
-    g.lineStyle(2, color, 0.8);
-    g.strokeCircle(size / 2, size / 2, size / 2 - 3);
-    // Inner fill
-    g.fillStyle(color, 0.5);
-    g.fillCircle(size / 2, size / 2, size / 2 - 5);
-    // Center bright dot
-    g.fillStyle(0xffffff, 0.6);
-    g.fillCircle(size / 2, size / 2, 4);
+    const base = 0xe94560;
+    const shadow = darken(base, 50);
+    const highlight = lighten(base, 40);
+
+    // Black outline shape (drawn slightly larger)
+    g.fillStyle(0x000000, 1);
+    g.beginPath();
+    g.moveTo(w / 2, h);
+    g.lineTo(0, 9);
+    g.arc(w / 2, 9, w / 2, Math.PI, 0, false);
+    g.closePath();
+    g.fillPath();
+
+    // Main fill (inset by 2px)
+    g.fillStyle(base, 1);
+    g.beginPath();
+    g.moveTo(w / 2, h - 2);
+    g.lineTo(3, 10);
+    g.arc(w / 2, 10, w / 2 - 3, Math.PI, 0, false);
+    g.closePath();
+    g.fillPath();
+
+    // Hard shadow band (right side)
+    g.fillStyle(shadow, 1);
+    g.beginPath();
+    g.moveTo(w / 2 + 2, h - 3);
+    g.lineTo(w - 3, 11);
+    g.arc(w / 2, 10, w / 2 - 3, 0, -0.3, true);
+    g.closePath();
+    g.fillPath();
+
+    // Hard highlight band (top-left)
+    g.fillStyle(highlight, 1);
+    g.fillRect(6, 10, 8, 4);
+
+    // Center circle logo
+    g.lineStyle(2, 0x000000, 1);
+    g.strokeCircle(w / 2, 16, 5);
+    g.fillStyle(0xffffff, 0.8);
+    g.fillCircle(w / 2, 16, 3);
+
+    // Tip — darker wedge
+    g.fillStyle(shadow, 1);
+    g.fillTriangle(w / 2, h - 2, w / 2 - 5, h - 10, w / 2 + 5, h - 10);
+
+    g.generateTexture('player', w, h);
+    g.destroy();
+  }
+
+  // ── Platform (cel-shaded groove segment) ──
+  genPlatform() {
+    const w = 80, h = 20;
+    const g = this.add.graphics();
+    const base = 0x44446a;
+    const shadow = darken(base, 40);
+    const highlight = lighten(base, 35);
+
+    // Black outline
+    g.fillStyle(0x000000, 1);
+    g.fillRoundedRect(0, 0, w, h, 4);
+
+    // Main flat fill
+    g.fillStyle(base, 1);
+    g.fillRoundedRect(2, 2, w - 4, h - 4, 3);
+
+    // Top highlight band (hard edge, top 4px)
+    g.fillStyle(highlight, 1);
+    g.fillRect(4, 2, w - 8, 4);
+
+    // Bottom shadow band (hard edge, bottom 4px)
+    g.fillStyle(shadow, 1);
+    g.fillRect(4, h - 6, w - 8, 4);
+
+    // Groove lines (bold, spaced)
+    g.lineStyle(2, 0x000000, 0.2);
+    for (let i = 10; i < w - 8; i += 8) {
+      g.lineBetween(i, 5, i, h - 5);
+    }
+
+    g.generateTexture('platform', w, h);
+    g.destroy();
+  }
+
+  // ── Music Note (cel-shaded eighth note) ──
+  genNote() {
+    const w = 24, h = 30;
+    const g = this.add.graphics();
+    const base = 0xf5c518;
+    const shadow = darken(base, 60);
+    const highlight = lighten(base, 50);
+
+    // Black outline — note head
+    g.fillStyle(0x000000, 1);
+    g.fillEllipse(9, 22, 15, 11);
+    // Black outline — stem
+    g.fillRect(15, 3, 4, 20);
+    // Black outline — flag
+    g.fillStyle(0x000000, 1);
+    g.fillTriangle(19, 3, 23, 9, 19, 15);
+
+    // Flat fill — note head
+    g.fillStyle(base, 1);
+    g.fillEllipse(9, 22, 12, 8);
+    // Shadow band on head
+    g.fillStyle(shadow, 1);
+    g.fillEllipse(11, 24, 8, 4);
+    // Highlight on head
+    g.fillStyle(highlight, 1);
+    g.fillEllipse(7, 20, 5, 3);
+
+    // Stem fill
+    g.fillStyle(base, 1);
+    g.fillRect(16, 4, 2, 18);
+
+    // Flag fill
+    g.fillStyle(base, 1);
+    g.fillTriangle(18, 4, 22, 9, 18, 14);
+    // Flag shadow
+    g.fillStyle(shadow, 1);
+    g.fillTriangle(18, 10, 21, 9, 18, 14);
+
+    g.generateTexture('note', w, h);
+    g.destroy();
+  }
+
+  // ── Hazard (cel-shaded scratch) ──
+  genHazard() {
+    const w = 42, h = 14;
+    const g = this.add.graphics();
+
+    // Black outline backing
+    g.lineStyle(4, 0x000000, 1);
+    g.lineBetween(2, 2, w - 2, h - 2);
+    g.lineBetween(2, h - 2, w - 2, 2);
+
+    // Red X — flat color
+    g.lineStyle(3, 0xff3333, 1);
+    g.lineBetween(2, 2, w - 2, h - 2);
+    g.lineBetween(2, h - 2, w - 2, 2);
+
+    // Highlight streak
+    g.lineStyle(1, 0xff8888, 1);
+    g.lineBetween(4, 3, w / 2, h / 2);
+
+    // Spark dots with outlines
+    [{ x: 5, y: 2 }, { x: w - 5, y: h - 2 }, { x: w / 2, y: 1 }].forEach(p => {
+      g.fillStyle(0x000000, 1);
+      g.fillCircle(p.x, p.y, 3);
+      g.fillStyle(0xff6666, 1);
+      g.fillCircle(p.x, p.y, 2);
+    });
+
+    g.generateTexture('hazard', w, h);
+    g.destroy();
+  }
+
+  // ── Exit (cel-shaded glowing disc) ──
+  genExit() {
+    const r = 22;
+    const s = r * 2;
+    const g = this.add.graphics();
+    const base = 0x00ff88;
+    const shadow = darken(base, 60);
+    const highlight = lighten(base, 50);
+
+    // Black outline
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(r, r, r);
+
+    // Main fill
+    g.fillStyle(base, 1);
+    g.fillCircle(r, r, r - 3);
+
+    // Shadow crescent (bottom-right)
+    g.fillStyle(shadow, 1);
+    g.beginPath();
+    g.arc(r + 3, r + 3, r - 5, 0, Math.PI * 2, false);
+    g.closePath();
+    g.fillPath();
+    // Re-fill main to create crescent effect
+    g.fillStyle(base, 1);
+    g.fillCircle(r, r, r - 5);
+
+    // Hard highlight spot (top-left)
+    g.fillStyle(highlight, 1);
+    g.fillCircle(r - 5, r - 5, 5);
+
+    // Inner ring outline
+    g.lineStyle(2, 0x000000, 0.5);
+    g.strokeCircle(r, r, r - 8);
+
+    // Center hole
+    g.fillStyle(0x000000, 0.6);
+    g.fillCircle(r, r, 4);
+
+    g.generateTexture('exit', s, s);
+    g.destroy();
+  }
+
+  // ── Particle (simple outlined dot) ──
+  genParticle() {
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(5, 5, 5);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(5, 5, 3);
+    g.generateTexture('particle', 10, 10);
+    g.destroy();
+  }
+
+  // ── Power-ups (cel-shaded orbs) ──
+  genPowerUp(key, color) {
+    const size = 32;
+    const r = size / 2;
+    const g = this.add.graphics();
+    const shadow = darken(color, 60);
+    const highlight = lighten(color, 60);
+
+    // Black outline
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(r, r, r);
+
+    // Main fill
+    g.fillStyle(color, 1);
+    g.fillCircle(r, r, r - 2);
+
+    // Shadow crescent (bottom-right)
+    g.fillStyle(shadow, 1);
+    g.beginPath();
+    g.arc(r + 2, r + 2, r - 4, 0, Math.PI * 2, false);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(color, 1);
+    g.fillCircle(r, r, r - 4);
+
+    // Hard highlight (top-left)
+    g.fillStyle(highlight, 1);
+    g.fillCircle(r - 4, r - 4, 5);
+
+    // White specular dot
+    g.fillStyle(0xffffff, 0.9);
+    g.fillCircle(r - 5, r - 5, 2);
+
+    // Inner ring (bold)
+    g.lineStyle(2, 0x000000, 0.4);
+    g.strokeCircle(r, r, r - 6);
+
     g.generateTexture(key, size, size);
     g.destroy();
   }

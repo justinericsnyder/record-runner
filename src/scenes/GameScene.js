@@ -53,12 +53,11 @@ export default class GameScene extends Phaser.Scene {
     this.exitDef = { ...song.exit };
     this.playerStartDef = { ...song.playerStart };
 
-    // Platforms
+    // Platforms — use the cel-shaded texture
     this.platformBodies = [];
     this.platformDefs.forEach((def) => {
-      const sprite = this.add.rectangle(0, 0, def.width, def.height, 0x44446a, 1);
-      sprite.setStrokeStyle(1, 0x6666aa, 0.4);
-      this.physics.add.existing(sprite, false);
+      const sprite = this.physics.add.sprite(0, 0, 'platform');
+      sprite.setDisplaySize(def.width, def.height);
       sprite.body.setImmovable(true);
       sprite.body.setAllowGravity(false);
       sprite.body.moves = false;
@@ -86,24 +85,16 @@ export default class GameScene extends Phaser.Scene {
       this.hazardSprites.push(hz);
     });
 
-    // Power-ups
+    // Power-ups — bobbing is handled manually in positionAllObjects via a sine offset
     this.powerupSprites = [];
-    this.powerupDefs.forEach((def) => {
+    this.powerupDefs.forEach((def, idx) => {
       const key = `powerup_${def.type}`;
       const pu = this.physics.add.sprite(0, 0, key).setScale(1);
       pu.body.setAllowGravity(false);
       pu.body.setImmovable(true);
       pu.body.moves = false;
       pu.setDepth(5);
-      // Bobbing animation
-      this.tweens.add({
-        targets: pu,
-        y: '-=6',
-        duration: 600 + Math.random() * 300,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut',
-      });
+      pu.setData('bobOffset', idx * 1.7); // phase offset so they don't all bob in sync
       this.powerupSprites.push(pu);
     });
 
@@ -223,12 +214,10 @@ export default class GameScene extends Phaser.Scene {
       if (!def.alive) return;
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
       const sprite = this.powerupSprites[i];
-      // Keep base position for the bobbing tween to offset from
-      sprite.setData('baseX', pos.x);
-      sprite.setData('baseY', pos.y);
+      const bob = Math.sin(this.time.now * 0.004 + sprite.getData('bobOffset')) * 6;
       sprite.x = pos.x;
-      // y is managed by tween offset, but we reset the base
-      sprite.body.reset(pos.x, sprite.y);
+      sprite.y = pos.y + bob;
+      sprite.body.reset(pos.x, pos.y + bob);
     });
 
     const exitPos = this.polarToWorld(this.exitDef.angle, this.exitDef.dist, rotation);
@@ -243,37 +232,63 @@ export default class GameScene extends Phaser.Scene {
     const container = this.add.container(cx, cy);
     const g = this.add.graphics();
 
-    // Outer edge bevel
-    g.fillStyle(0x0a0a18, 1);
-    g.fillCircle(0, 0, RECORD_RADIUS + 3);
-    // Main disc
-    g.fillStyle(0x111122, 1);
+    // ── Cel-shaded vinyl record ──
+
+    // Bold black outer ring
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(0, 0, RECORD_RADIUS + 4);
+
+    // Main disc — flat dark fill
+    g.fillStyle(0x18182e, 1);
     g.fillCircle(0, 0, RECORD_RADIUS);
-    // Grooves with varying opacity for realism
-    for (let r = RECORD_RADIUS - 4; r > 65; r -= 5) {
-      const alpha = 0.02 + Math.sin(r * 0.1) * 0.015;
-      g.lineStyle(1, 0xffffff, alpha);
+
+    // Hard shadow crescent (bottom-right quadrant)
+    g.fillStyle(0x0e0e1e, 1);
+    g.beginPath();
+    g.arc(8, 8, RECORD_RADIUS - 6, 0, Math.PI * 2, false);
+    g.closePath();
+    g.fillPath();
+    // Re-fill to create crescent
+    g.fillStyle(0x18182e, 1);
+    g.fillCircle(0, 0, RECORD_RADIUS - 8);
+
+    // Groove rings — bold, spaced, flat opacity (cel style)
+    for (let r = RECORD_RADIUS - 12; r > 75; r -= 10) {
+      g.lineStyle(2, 0x2a2a44, 1);
       g.strokeCircle(0, 0, r);
     }
-    // Subtle sheen (light reflection arc)
-    g.lineStyle(2, 0xffffff, 0.06);
+
+    // Hard highlight arc (top-left, like a light reflection)
+    g.lineStyle(3, 0x3a3a5c, 1);
     g.beginPath();
-    g.arc(0, 0, RECORD_RADIUS * 0.7, -0.8, -0.3, false);
+    g.arc(0, 0, RECORD_RADIUS * 0.72, Math.PI + 0.8, Math.PI + 1.6, false);
     g.strokePath();
-    g.lineStyle(1, 0xffffff, 0.04);
+    g.lineStyle(2, 0x3a3a5c, 1);
     g.beginPath();
-    g.arc(0, 0, RECORD_RADIUS * 0.5, -0.9, -0.2, false);
+    g.arc(0, 0, RECORD_RADIUS * 0.52, Math.PI + 0.7, Math.PI + 1.5, false);
     g.strokePath();
-    // Label
-    g.fillStyle(record.labelColor, 0.18);
+
+    // Label area — flat fill with outline
+    g.fillStyle(record.labelColor, 0.25);
     g.fillCircle(0, 0, 70);
-    g.lineStyle(1, record.labelColor, 0.1);
-    g.strokeCircle(0, 0, 60);
-    // Center hole
-    g.fillStyle(0x000000, 0.5);
-    g.fillCircle(0, 0, 8);
-    g.lineStyle(1, 0x333344, 0.5);
-    g.strokeCircle(0, 0, 8);
+    g.lineStyle(3, 0x000000, 0.6);
+    g.strokeCircle(0, 0, 70);
+
+    // Label highlight
+    const lh = Phaser.Display.Color.IntegerToColor(record.labelColor);
+    const lhBright = Phaser.Display.Color.GetColor(
+      Math.min(255, lh.red + 60),
+      Math.min(255, lh.green + 60),
+      Math.min(255, lh.blue + 60)
+    );
+    g.fillStyle(lhBright, 0.15);
+    g.fillCircle(-12, -12, 30);
+
+    // Center hole — bold outline
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(0, 0, 10);
+    g.lineStyle(2, 0x333344, 1);
+    g.strokeCircle(0, 0, 10);
 
     container.add(g);
     container.setDepth(-1);

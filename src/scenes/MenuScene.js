@@ -81,21 +81,43 @@ export default class MenuScene extends Phaser.Scene {
 
   drawRecord(x, y, radius, color, labelColor) {
     const container = this.add.container(x, y);
-
     const g = this.add.graphics();
-    // Outer disc
-    g.fillStyle(0x111122, 1);
+
+    // Black outline
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(0, 0, radius + 2);
+
+    // Main disc flat fill
+    g.fillStyle(0x18182e, 1);
     g.fillCircle(0, 0, radius);
-    // Grooves
-    for (let r = radius - 5; r > radius * 0.4; r -= 6) {
-      g.lineStyle(1, 0x222244, 0.4);
+
+    // Shadow crescent
+    g.fillStyle(0x0e0e1e, 1);
+    g.beginPath();
+    g.arc(3, 3, radius - 3, 0, Math.PI * 2, false);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(0x18182e, 1);
+    g.fillCircle(0, 0, radius - 4);
+
+    // Bold groove rings
+    for (let r = radius - 6; r > radius * 0.4; r -= 8) {
+      g.lineStyle(2, 0x2a2a44, 1);
       g.strokeCircle(0, 0, r);
     }
-    // Label
+
+    // Label with outline
     g.fillStyle(labelColor, 1);
     g.fillCircle(0, 0, radius * 0.3);
+    g.lineStyle(2, 0x000000, 0.6);
+    g.strokeCircle(0, 0, radius * 0.3);
+
+    // Label highlight
+    g.fillStyle(0xffffff, 0.2);
+    g.fillCircle(-radius * 0.08, -radius * 0.08, radius * 0.12);
+
     // Center hole
-    g.fillStyle(0x1a1a2e, 1);
+    g.fillStyle(0x000000, 1);
     g.fillCircle(0, 0, 4);
 
     container.add(g);

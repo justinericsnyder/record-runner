@@ -92,19 +92,6 @@ function generateSong(seed, difficulty) {
     if (i >= 3 && rng() < 0.15 + d * 0.12) {
       hazards.push({ angle, dist: dist - 1, width: Math.min(width * 0.7, 50) });
     }
-
-    // Power-up: spawn near some platforms (not first few, not too many)
-    // ~15% chance, at least 2 platforms apart from last power-up
-    if (i >= 4 && rng() < 0.15) {
-      const lastPu = powerups.length > 0 ? powerups[powerups.length - 1] : null;
-      const lastPuIdx = lastPu ? lastPu._srcIdx : -10;
-      if (i - lastPuIdx >= 3) {
-        const puAngle = angle + rand(-0.06, 0.06);
-        const puDist = dist + rand(-18, -6); // slightly above the platform
-        const puType = pick(POWERUP_TYPES);
-        powerups.push({ angle: puAngle, dist: puDist, type: puType, _srcIdx: i });
-      }
-    }
   }
 
   // Bonus collectibles
@@ -116,18 +103,21 @@ function generateSong(seed, difficulty) {
     });
   }
 
-  // Guarantee at least 1 power-up per level
-  if (powerups.length === 0) {
-    const mid = platforms[Math.floor(platforms.length / 2)];
-    powerups.push({
-      angle: mid.angle + rand(-0.05, 0.05),
-      dist: mid.dist - 12,
-      type: pick(POWERUP_TYPES),
-    });
-  }
+  // ── Scatter power-ups across the full record surface ──
+  // Place 3-5 power-ups at random angles/distances across the vinyl,
+  // not tied to specific platforms
+  const puCount = randInt(3, 5);
+  const minPuDist = endDist + 20;
+  const maxPuDist = startDist - 10;
+  const angleStart = PI; // same as level start
+  const angleEnd = platforms[platforms.length - 1].angle;
 
-  // Clean internal field
-  powerups.forEach(p => delete p._srcIdx);
+  for (let i = 0; i < puCount; i++) {
+    const puAngle = rand(angleStart + 0.3, angleEnd - 0.2);
+    const puDist = rand(minPuDist, maxPuDist);
+    const puType = pick(POWERUP_TYPES);
+    powerups.push({ angle: puAngle, dist: puDist, type: puType });
+  }
 
   return {
     platforms,
