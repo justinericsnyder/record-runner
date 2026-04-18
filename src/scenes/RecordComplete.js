@@ -12,6 +12,7 @@ export default class RecordComplete extends Phaser.Scene {
     this.nextRecordIndex = data.nextRecordIndex;
     this.score = data.score;
     this.lives = data.lives;
+    this.mode = data.mode || 'runner';
   }
 
   create() {
@@ -89,6 +90,7 @@ export default class RecordComplete extends Phaser.Scene {
           songIndex: 0,
           score: this.score,
           lives: this.lives,
+          mode: this.mode,
         });
       });
     });

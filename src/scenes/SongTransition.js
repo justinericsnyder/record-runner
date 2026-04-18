@@ -12,6 +12,7 @@ export default class SongTransition extends Phaser.Scene {
     this.songIndex = data.songIndex;
     this.score = data.score;
     this.lives = data.lives;
+    this.mode = data.mode || 'runner';
   }
 
   create() {
@@ -69,7 +70,8 @@ export default class SongTransition extends Phaser.Scene {
     this.time.delayedCall(2500, () => {
       this.cameras.main.fadeOut(400);
       this.time.delayedCall(400, () => {
-        this.scene.start('Game', {
+        const scene = this.mode === 'spin' ? 'Spin' : 'Game';
+        this.scene.start(scene, {
           recordIndex: this.recordIndex,
           songIndex: this.songIndex,
           score: this.score,

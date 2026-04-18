@@ -3,6 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT, GRAVITY } from './config.js';
 import BootScene from './scenes/BootScene.js';
 import MenuScene from './scenes/MenuScene.js';
 import GameScene from './scenes/GameScene.js';
+import SpinScene from './scenes/SpinScene.js';
 import SongTransition from './scenes/SongTransition.js';
 import RecordComplete from './scenes/RecordComplete.js';
 import GameOverScene from './scenes/GameOverScene.js';
@@ -25,6 +26,7 @@ const config = {
     BootScene,
     MenuScene,
     GameScene,
+    SpinScene,
     SongTransition,
     RecordComplete,
     GameOverScene,
