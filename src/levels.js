@@ -135,8 +135,8 @@ function generateSong(seed, difficulty) {
     }
   }
 
-  // Power-ups scattered across record
-  const puCount = randInt(3, 5 + Math.floor(d));
+  // Power-ups — rare, 1 per level (occasionally 2 on harder levels)
+  const puCount = rng() < 0.3 + d * 0.1 ? 2 : 1;
   const angleStart = PI;
   const angleEnd = platforms[platforms.length - 1].angle;
   for (let i = 0; i < puCount; i++) {

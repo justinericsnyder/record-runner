@@ -38,9 +38,9 @@ export default class BootScene extends Phaser.Scene {
     this.genHazard();
     this.genExit();
     this.genParticle();
-    this.genPowerUp('powerup_stop', 0x00ccff);
-    this.genPowerUp('powerup_slow', 0x88ff44);
-    this.genPowerUp('powerup_fast', 0xff8800);
+    this.genPowerUpStop();
+    this.genPowerUpSlow();
+    this.genPowerUpFast();
     this.genSpring();
     this.genArcWall();
   }
@@ -259,44 +259,149 @@ export default class BootScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // ── Power-ups (cel-shaded orbs) ──
-  genPowerUp(key, color) {
-    const size = 32;
-    const r = size / 2;
+  // ── FREEZE power-up: Snowflake / hexagon shape ──
+  genPowerUpStop() {
+    const s = 36;
+    const cx = s / 2, cy = s / 2;
     const g = this.add.graphics();
-    const shadow = darken(color, 60);
-    const highlight = lighten(color, 60);
+    const color = 0x00ccff;
+    const hi = lighten(color, 60);
 
-    // Black outline
+    // Black outline hexagon
     g.fillStyle(0x000000, 1);
-    g.fillCircle(r, r, r);
-
-    // Main fill
-    g.fillStyle(color, 1);
-    g.fillCircle(r, r, r - 2);
-
-    // Shadow crescent (bottom-right)
-    g.fillStyle(shadow, 1);
     g.beginPath();
-    g.arc(r + 2, r + 2, r - 4, 0, Math.PI * 2, false);
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      const method = i === 0 ? 'moveTo' : 'lineTo';
+      g[method](cx + Math.cos(a) * 16, cy + Math.sin(a) * 16);
+    }
     g.closePath();
     g.fillPath();
+
+    // Colored fill
     g.fillStyle(color, 1);
-    g.fillCircle(r, r, r - 4);
+    g.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      const method = i === 0 ? 'moveTo' : 'lineTo';
+      g[method](cx + Math.cos(a) * 13, cy + Math.sin(a) * 13);
+    }
+    g.closePath();
+    g.fillPath();
 
-    // Hard highlight (top-left)
-    g.fillStyle(highlight, 1);
-    g.fillCircle(r - 4, r - 4, 5);
+    // Cross lines (snowflake arms)
+    g.lineStyle(2, hi, 0.8);
+    for (let i = 0; i < 3; i++) {
+      const a = (Math.PI / 3) * i;
+      g.lineBetween(cx + Math.cos(a) * 10, cy + Math.sin(a) * 10,
+                     cx - Math.cos(a) * 10, cy - Math.sin(a) * 10);
+    }
 
-    // White specular dot
+    // Center dot
     g.fillStyle(0xffffff, 0.9);
-    g.fillCircle(r - 5, r - 5, 2);
+    g.fillCircle(cx, cy, 3);
 
-    // Inner ring (bold)
-    g.lineStyle(2, 0x000000, 0.4);
-    g.strokeCircle(r, r, r - 6);
+    g.generateTexture('powerup_stop', s, s);
+    g.destroy();
+  }
 
-    g.generateTexture(key, size, size);
+  // ── SLOW power-up: Diamond shape ──
+  genPowerUpSlow() {
+    const s = 34;
+    const cx = s / 2, cy = s / 2;
+    const g = this.add.graphics();
+    const color = 0x88ff44;
+    const shadow = darken(color, 60);
+    const hi = lighten(color, 50);
+
+    // Black outline diamond
+    g.fillStyle(0x000000, 1);
+    g.fillTriangle(cx, 1, s - 2, cy, cx, s - 1);
+    g.fillTriangle(cx, 1, 2, cy, cx, s - 1);
+
+    // Colored fill
+    g.fillStyle(color, 1);
+    g.fillTriangle(cx, 4, s - 5, cy, cx, s - 4);
+    g.fillTriangle(cx, 4, 5, cy, cx, s - 4);
+
+    // Shadow on right half
+    g.fillStyle(shadow, 1);
+    g.fillTriangle(cx, 5, s - 5, cy, cx, s - 5);
+
+    // Highlight on top-left
+    g.fillStyle(hi, 1);
+    g.fillTriangle(cx, 5, 7, cy - 2, cx - 3, cy - 5);
+
+    // Center line
+    g.lineStyle(2, 0x000000, 0.3);
+    g.lineBetween(cx, 4, cx, s - 4);
+
+    // Specular
+    g.fillStyle(0xffffff, 0.8);
+    g.fillCircle(cx - 3, cy - 5, 2);
+
+    g.generateTexture('powerup_slow', s, s);
+    g.destroy();
+  }
+
+  // ── FAST power-up: Lightning bolt shape ──
+  genPowerUpFast() {
+    const w = 30, h = 36;
+    const g = this.add.graphics();
+    const color = 0xff8800;
+    const shadow = darken(color, 60);
+    const hi = lighten(color, 60);
+
+    // Black outline bolt
+    g.fillStyle(0x000000, 1);
+    g.beginPath();
+    g.moveTo(18, 0);
+    g.lineTo(4, 16);
+    g.lineTo(13, 16);
+    g.lineTo(10, h);
+    g.lineTo(26, 18);
+    g.lineTo(17, 18);
+    g.lineTo(22, 0);
+    g.closePath();
+    g.fillPath();
+
+    // Colored fill
+    g.fillStyle(color, 1);
+    g.beginPath();
+    g.moveTo(17, 3);
+    g.lineTo(7, 15);
+    g.lineTo(14, 15);
+    g.lineTo(11, h - 3);
+    g.lineTo(24, 19);
+    g.lineTo(16, 19);
+    g.lineTo(20, 3);
+    g.closePath();
+    g.fillPath();
+
+    // Shadow on right side
+    g.fillStyle(shadow, 1);
+    g.beginPath();
+    g.moveTo(16, 19);
+    g.lineTo(24, 19);
+    g.lineTo(11, h - 3);
+    g.lineTo(14, 22);
+    g.closePath();
+    g.fillPath();
+
+    // Highlight streak
+    g.fillStyle(hi, 1);
+    g.beginPath();
+    g.moveTo(17, 3);
+    g.lineTo(15, 8);
+    g.lineTo(19, 3);
+    g.closePath();
+    g.fillPath();
+
+    // Specular
+    g.fillStyle(0xffffff, 0.8);
+    g.fillCircle(14, 7, 2);
+
+    g.generateTexture('powerup_fast', w, h);
     g.destroy();
   }
 

@@ -786,53 +786,21 @@ export default class SpinScene extends Phaser.Scene {
   }
 
   activatePowerup(type) {
-    const DURATION = 5000;
     const COLORS = { stop: 0x00ccff, slow: 0x88ff44, fast: 0xff8800 };
-    const LABELS = { stop: '⏸ FREEZE', slow: '⏪ SLOW', fast: '⏩ FAST' };
-
-    // Cancel existing
-    if (this.activePowerup && this.activePowerup.timerEvent) {
-      this.activePowerup.timerEvent.remove(false);
-    }
+    const LABELS = { stop: '❄ FREEZE', slow: '◆ SLOW', fast: '⚡ FAST' };
 
     const color = COLORS[type];
 
-    // HUD
+    // HUD — permanent indicator (no timer bar)
     this.powerupText.setText(LABELS[type]);
     this.powerupText.setColor(`#${color.toString(16).padStart(6, '0')}`);
     this.powerupText.setAlpha(1);
-    this.powerupTimerBar.setVisible(true);
-    this.powerupTimerBar.setFillStyle(color, 0.6);
-    this.powerupTimerBar.setSize(120, 6);
+    this.powerupTimerBar.setVisible(false); // no timer — lasts forever
 
-    this.tweens.killTweensOf(this.powerupTimerBar);
-    this.tweens.add({
-      targets: this.powerupTimerBar,
-      displayWidth: 0,
-      duration: DURATION,
-      ease: 'Linear',
-    });
-
-    // Flash near end
-    this.time.delayedCall(DURATION - 1200, () => {
-      if (this.activePowerup && this.activePowerup.type === type) {
-        this.tweens.add({
-          targets: this.powerupText,
-          alpha: 0.3, duration: 150, yoyo: true, repeat: 4,
-        });
-      }
-    });
-
-    const timerEvent = this.time.delayedCall(DURATION, () => {
-      this.activePowerup = null;
-      this.powerupText.setAlpha(0);
-      this.powerupTimerBar.setVisible(false);
-    });
-
-    this.activePowerup = { type, timerEvent };
+    this.activePowerup = { type };
 
     // Camera flash
-    this.cameras.main.flash(100,
+    this.cameras.main.flash(150,
       (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff, true);
   }
 
