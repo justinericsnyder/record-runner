@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, GRAVITY } from './config.js';
 import BootScene from './scenes/BootScene.js';
 import MenuScene from './scenes/MenuScene.js';
-import GameScene from './scenes/GameScene.js';
 import SpinScene from './scenes/SpinScene.js';
 import SongTransition from './scenes/SongTransition.js';
 import RecordComplete from './scenes/RecordComplete.js';
@@ -25,7 +24,6 @@ const config = {
   scene: [
     BootScene,
     MenuScene,
-    GameScene,
     SpinScene,
     SongTransition,
     RecordComplete,
