@@ -112,6 +112,20 @@ export default class GameScene extends Phaser.Scene {
     this.jumpBufferTime = 0;
     this.isHurt = false;
     this.exitReached = false;
+    this.recordStarted = false; // rotation doesn't begin until first input
+
+    // "Press to start" prompt
+    this.startPrompt = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40,
+      '← → to move  •  ↑ / Space to jump', {
+        fontSize: '13px', color: '#aaaacc', fontFamily: 'monospace',
+      }).setOrigin(0.5).setDepth(100);
+    this.tweens.add({
+      targets: this.startPrompt,
+      alpha: 0.3,
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+    });
 
     // Particles
     this.noteParticles = this.add.particles(0, 0, 'particle', {
@@ -230,8 +244,25 @@ export default class GameScene extends Phaser.Scene {
 
     const dt = delta / 1000;
 
-    // Advance record rotation
-    this.currentAngle += RECORD_ROTATION_SPEED * dt;
+    // Detect first input to start the record spinning
+    const left = this.cursors.left.isDown || this.wasd.left.isDown;
+    const right = this.cursors.right.isDown || this.wasd.right.isDown;
+    const jumpPressed = Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
+      Phaser.Input.Keyboard.JustDown(this.wasd.up) ||
+      Phaser.Input.Keyboard.JustDown(this.wasd.space);
+
+    if (!this.recordStarted && (left || right || jumpPressed)) {
+      this.recordStarted = true;
+      if (this.startPrompt) {
+        this.startPrompt.destroy();
+        this.startPrompt = null;
+      }
+    }
+
+    // Only advance rotation once the player has moved
+    if (this.recordStarted) {
+      this.currentAngle += RECORD_ROTATION_SPEED * dt;
+    }
 
     // Sync visual disc
     this.recordDisc.setAngle(Phaser.Math.RadToDeg(this.currentAngle));
@@ -250,12 +281,7 @@ export default class GameScene extends Phaser.Scene {
       this.coyoteTime -= delta;
     }
 
-    // Input
-    const left = this.cursors.left.isDown || this.wasd.left.isDown;
-    const right = this.cursors.right.isDown || this.wasd.right.isDown;
-    const jumpPressed = Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.up) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.space);
+    // Input already read above
 
     if (left) {
       this.player.setVelocityX(-PLAYER_SPEED);
