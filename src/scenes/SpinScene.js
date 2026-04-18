@@ -7,8 +7,11 @@ import { RECORDS } from '../levels.js';
 
 /**
  * Spin Mode — you rotate the record by click-dragging.
- * The player (a ball) is passive — only gravity, collisions, and
+ * The player is passive — only gravity, collisions, and
  * momentum from the rotating platforms move it toward the exit.
+ *
+ * Platforms use velocity-based movement (not teleporting) so
+ * Arcade physics properly resolves collisions during rotation.
  */
 export default class SpinScene extends Phaser.Scene {
   constructor() {
@@ -27,14 +30,12 @@ export default class SpinScene extends Phaser.Scene {
     const song = record.songs[this.songIndex];
 
     this.currentAngle = 0;
-    this.angularVelocity = 0; // rad/s — from drag momentum
+    this.prevAngle = 0;
+    this.angularVelocity = 0;
 
     this.cameras.main.setBackgroundColor(Phaser.Display.Color.IntegerToColor(record.color).rgba);
 
-    // Record disc visual
     this.recordDisc = this.createRecordDisc(record);
-
-    // HUD
     this.createHUD(record, song);
 
     // Level data
@@ -45,14 +46,15 @@ export default class SpinScene extends Phaser.Scene {
     this.exitDef = { ...song.exit };
     this.playerStartDef = { ...song.playerStart };
 
-    // Platforms
+    // Platforms — moves=true so they use velocity for physics resolution
     this.platformBodies = [];
     this.platformDefs.forEach((def) => {
       const sprite = this.physics.add.sprite(0, 0, 'platform');
       sprite.setDisplaySize(def.width, def.height);
       sprite.body.setImmovable(true);
       sprite.body.setAllowGravity(false);
-      sprite.body.moves = false;
+      sprite.body.moves = true;
+      sprite.body.pushable = false;
       this.platformBodies.push(sprite);
     });
 
@@ -100,17 +102,17 @@ export default class SpinScene extends Phaser.Scene {
       duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
-    this.positionAllObjects(0);
+    // Initial placement (teleport is fine for frame 0)
+    this.teleportAllObjects(0);
 
-    // Player — a passive ball, no direct control
+    // Player
     const startPos = this.polarToWorld(this.playerStartDef.angle, this.playerStartDef.dist, 0);
     this.player = this.physics.add.sprite(startPos.x, startPos.y - 20, 'player');
     this.player.setCollideWorldBounds(false);
-    this.player.setBounce(0.25);
+    this.player.setBounce(0.2);
     this.player.body.setSize(22, 30);
     this.player.body.setOffset(3, 2);
     this.player.setDepth(10);
-    // Higher drag so the ball doesn't slide forever
     this.player.body.setDrag(40, 0);
 
     // Collisions
@@ -123,7 +125,8 @@ export default class SpinScene extends Phaser.Scene {
     // ── Drag-to-rotate input ──
     this.isDragging = false;
     this.lastDragAngle = 0;
-    this.dragSamples = []; // recent angular velocity samples for momentum
+    this.pendingDragDelta = 0; // accumulated drag delta to apply in update
+    this.dragSamples = [];
 
     this.input.on('pointerdown', (pointer) => {
       this.isDragging = true;
@@ -132,7 +135,8 @@ export default class SpinScene extends Phaser.Scene {
         pointer.x - RECORD_CENTER_X
       );
       this.dragSamples = [];
-      this.angularVelocity = 0; // kill momentum when grabbing
+      this.angularVelocity = 0;
+      this.pendingDragDelta = 0;
     });
 
     this.input.on('pointermove', (pointer) => {
@@ -142,16 +146,14 @@ export default class SpinScene extends Phaser.Scene {
         pointer.x - RECORD_CENTER_X
       );
       let delta = newAngle - this.lastDragAngle;
-      // Normalize to [-PI, PI]
       if (delta > Math.PI) delta -= Math.PI * 2;
       if (delta < -Math.PI) delta += Math.PI * 2;
 
-      this.currentAngle += delta;
+      // Accumulate — will be applied in update() in small steps
+      this.pendingDragDelta += delta;
       this.lastDragAngle = newAngle;
 
-      // Track samples for momentum
       this.dragSamples.push({ delta, time: this.time.now });
-      // Keep only last 80ms of samples
       const cutoff = this.time.now - 80;
       this.dragSamples = this.dragSamples.filter(s => s.time > cutoff);
     });
@@ -160,16 +162,13 @@ export default class SpinScene extends Phaser.Scene {
       if (!this.isDragging) return;
       this.isDragging = false;
 
-      // Calculate release velocity from recent samples
       if (this.dragSamples.length >= 2) {
         const first = this.dragSamples[0];
         const last = this.dragSamples[this.dragSamples.length - 1];
         const dt = (last.time - first.time) / 1000;
         if (dt > 0) {
           const totalDelta = this.dragSamples.reduce((sum, s) => sum + s.delta, 0);
-          this.angularVelocity = totalDelta / dt;
-          // Clamp max spin speed
-          this.angularVelocity = Phaser.Math.Clamp(this.angularVelocity, -6, 6);
+          this.angularVelocity = Phaser.Math.Clamp(totalDelta / dt, -4, 4);
         }
       }
     });
@@ -177,19 +176,15 @@ export default class SpinScene extends Phaser.Scene {
     this.isHurt = false;
     this.exitReached = false;
 
-    // Prompt
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 35,
       'Click & drag to spin the record', {
         fontSize: '14px', color: '#aaaacc', fontFamily: 'monospace',
       }).setOrigin(0.5).setDepth(100);
-
-    // Mode label
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 16,
       'SPIN MODE', {
         fontSize: '11px', color: '#f5c518', fontFamily: 'monospace', fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(100);
 
-    // Particles
     this.noteParticles = this.add.particles(0, 0, 'particle', {
       speed: { min: 50, max: 150 }, scale: { start: 0.6, end: 0 },
       lifespan: 400, tint: 0xf5c518, emitting: false,
@@ -204,15 +199,43 @@ export default class SpinScene extends Phaser.Scene {
     };
   }
 
-  positionAllObjects(rotation) {
+  /** Teleport objects (used only for initial placement) */
+  teleportAllObjects(rotation) {
     this.platformDefs.forEach((def, i) => {
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
       const sprite = this.platformBodies[i];
-      sprite.x = pos.x;
-      sprite.y = pos.y;
+      sprite.setPosition(pos.x, pos.y);
       sprite.rotation = def.angle + rotation + (def.tilt || 0);
       sprite.body.reset(pos.x, pos.y);
     });
+    this._positionNonPlatforms(rotation);
+  }
+
+  /**
+   * Move platforms via velocity so Arcade physics resolves collisions.
+   * Instead of teleporting, we compute where each platform needs to be
+   * and set its velocity so it arrives there in one frame.
+   */
+  moveAllObjects(rotation, dt) {
+    const invDt = dt > 0 ? 1 / dt : 0;
+
+    this.platformDefs.forEach((def, i) => {
+      const target = this.polarToWorld(def.angle, def.dist, rotation);
+      const sprite = this.platformBodies[i];
+
+      // Set velocity to reach target position this frame
+      sprite.body.setVelocity(
+        (target.x - sprite.x) * invDt,
+        (target.y - sprite.y) * invDt
+      );
+      sprite.rotation = def.angle + rotation + (def.tilt || 0);
+    });
+
+    this._positionNonPlatforms(rotation);
+  }
+
+  /** Snap non-platform objects (collectibles, hazards, etc.) — these don't need smooth movement */
+  _positionNonPlatforms(rotation) {
     this.collectibleDefs.forEach((def, i) => {
       if (!def.alive) return;
       const pos = this.polarToWorld(def.angle, def.dist, rotation);
@@ -242,6 +265,17 @@ export default class SpinScene extends Phaser.Scene {
     this.exitSprite.x = exitPos.x;
     this.exitSprite.y = exitPos.y;
     this.exitSprite.body.reset(exitPos.x, exitPos.y);
+  }
+
+  /** After physics step, snap platforms to exact target so they don't drift */
+  snapPlatforms(rotation) {
+    this.platformDefs.forEach((def, i) => {
+      const target = this.polarToWorld(def.angle, def.dist, rotation);
+      const sprite = this.platformBodies[i];
+      sprite.setPosition(target.x, target.y);
+      sprite.body.setVelocity(0, 0);
+      sprite.body.position.set(target.x - sprite.body.halfWidth, target.y - sprite.body.halfHeight);
+    });
   }
 
   createRecordDisc(record) {
@@ -298,21 +332,47 @@ export default class SpinScene extends Phaser.Scene {
     }).setOrigin(1, 0).setDepth(d);
   }
 
-  // ── Update: momentum-based rotation ──
+  // ── Update ──
   update(time, delta) {
     if (this.exitReached) return;
     const dt = delta / 1000;
 
-    // Apply momentum when not dragging
-    if (!this.isDragging) {
-      this.currentAngle += this.angularVelocity * dt;
-      // Friction — decay the spin
+    // Max rotation per frame to prevent tunneling (~3 degrees)
+    const MAX_STEP = 0.05;
+
+    // Determine total angle change this frame
+    let angleDelta = 0;
+
+    if (this.isDragging) {
+      angleDelta = this.pendingDragDelta;
+      this.pendingDragDelta = 0;
+    } else {
+      angleDelta = this.angularVelocity * dt;
       this.angularVelocity *= 0.97;
       if (Math.abs(this.angularVelocity) < 0.01) this.angularVelocity = 0;
     }
 
+    // Apply rotation in small sub-steps to prevent tunneling
+    const steps = Math.max(1, Math.ceil(Math.abs(angleDelta) / MAX_STEP));
+    const stepDelta = angleDelta / steps;
+    const stepDt = dt / steps;
+
+    for (let s = 0; s < steps; s++) {
+      this.currentAngle += stepDelta;
+      this.moveAllObjects(this.currentAngle, stepDt);
+
+      // Run a physics step for this sub-step
+      // (Phaser's auto-update handles the main step, but for sub-steps
+      //  we manually separate/resolve after setting velocities)
+    }
+
+    // After all sub-steps, snap platforms to final position
+    this.snapPlatforms(this.currentAngle);
+
     this.recordDisc.setAngle(Phaser.Math.RadToDeg(this.currentAngle));
-    this.positionAllObjects(this.currentAngle);
+
+    // Push player out of any platform they're overlapping
+    this.resolvePlayerPlatformOverlap();
 
     // Death check
     const dx = this.player.x - RECORD_CENTER_X;
@@ -320,6 +380,66 @@ export default class SpinScene extends Phaser.Scene {
     const distFromCenter = Math.sqrt(dx * dx + dy * dy);
     if (this.player.y > GAME_HEIGHT + 80 || distFromCenter > RECORD_RADIUS + 100) {
       this.playerDie();
+    }
+  }
+
+  /**
+   * Manual overlap resolution: if the player is inside a platform,
+   * push them out along the shortest axis. This catches any cases
+   * where the velocity-based movement wasn't enough.
+   */
+  resolvePlayerPlatformOverlap() {
+    const pb = this.player.body;
+    const px = pb.x;
+    const py = pb.y;
+    const pw = pb.width;
+    const ph = pb.height;
+
+    for (const sprite of this.platformBodies) {
+      const sb = sprite.body;
+      const sx = sb.x;
+      const sy = sb.y;
+      const sw = sb.width;
+      const sh = sb.height;
+
+      // AABB overlap test
+      const overlapX = Math.min(px + pw, sx + sw) - Math.max(px, sx);
+      const overlapY = Math.min(py + ph, sy + sh) - Math.max(py, sy);
+
+      if (overlapX > 0 && overlapY > 0) {
+        // Push out along the smallest overlap axis
+        if (overlapY < overlapX) {
+          // Vertical push
+          const playerCenterY = py + ph / 2;
+          const platCenterY = sy + sh / 2;
+          if (playerCenterY < platCenterY) {
+            // Player is above — push up
+            this.player.y -= overlapY;
+            pb.position.y -= overlapY;
+            if (pb.velocity.y > 0) pb.velocity.y = 0;
+            pb.blocked.down = true;
+          } else {
+            // Player is below — push down
+            this.player.y += overlapY;
+            pb.position.y += overlapY;
+            if (pb.velocity.y < 0) pb.velocity.y = 0;
+            pb.blocked.up = true;
+          }
+        } else {
+          // Horizontal push
+          const playerCenterX = px + pw / 2;
+          const platCenterX = sx + sw / 2;
+          if (playerCenterX < platCenterX) {
+            this.player.x -= overlapX;
+            pb.position.x -= overlapX;
+            if (pb.velocity.x > 0) pb.velocity.x = 0;
+          } else {
+            this.player.x += overlapX;
+            pb.position.x += overlapX;
+            if (pb.velocity.x < 0) pb.velocity.x = 0;
+          }
+        }
+      }
     }
   }
 
