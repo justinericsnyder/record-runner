@@ -172,11 +172,12 @@ export default class SpinScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (pointer) => {
       // Ignore if touch started on a movement button
-      if (this._touchBtnLeft || this._touchBtnRight) {
-        const lx = 80, rx = GAME_WIDTH - 80, by = GAME_HEIGHT - 100, br = 40;
+      if (this._touchBtnLeft || this._touchBtnRight || this._touchBtnJump) {
+        const lx = 80, rx = GAME_WIDTH - 80, jx = GAME_WIDTH / 2, by = GAME_HEIGHT - 100, br = 40;
         const onLeft = Math.hypot(pointer.x - lx, pointer.y - by) < br;
         const onRight = Math.hypot(pointer.x - rx, pointer.y - by) < br;
-        if (onLeft || onRight) return;
+        const onJump = Math.hypot(pointer.x - jx, pointer.y - by) < br;
+        if (onLeft || onRight || onJump) return;
       }
       this.isDragging = true;
       this.lastDragAngle = Math.atan2(
@@ -225,17 +226,21 @@ export default class SpinScene extends Phaser.Scene {
     this.isHurt = false;
     this.exitReached = false;
 
-    // Keyboard input — A/D for horizontal movement (no jump)
+    // Keyboard input — A/D to move, Space/W/Up to jump
     this.keys = this.input.keyboard.addKeys({
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
       arrowLeft: Phaser.Input.Keyboard.KeyCodes.LEFT,
       arrowRight: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      jump: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      jumpUp: Phaser.Input.Keyboard.KeyCodes.W,
+      jumpArrow: Phaser.Input.Keyboard.KeyCodes.UP,
     });
 
     // Touch state
     this.touchLeft = false;
     this.touchRight = false;
+    this.touchJump = false;
 
     // Detect if touch device
     const isTouchDevice = !this.sys.game.device.os.desktop;
@@ -243,12 +248,12 @@ export default class SpinScene extends Phaser.Scene {
     if (isTouchDevice) {
       this.createTouchControls();
       this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 60,
-        'Drag to spin  •  Buttons to move', {
+        'Drag to spin  •  Buttons to move & jump', {
           fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
         }).setOrigin(0.5).setDepth(100);
     } else {
       this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 35,
-        'Click & drag to spin  •  A / D to move', {
+        'Drag to spin  •  A / D to move  •  Space to jump', {
           fontSize: '14px', color: '#aaaacc', fontFamily: 'monospace',
         }).setOrigin(0.5).setDepth(100);
     }
@@ -465,9 +470,19 @@ export default class SpinScene extends Phaser.Scene {
     rightBtn.on('pointerup', () => { this.touchRight = false; });
     rightBtn.on('pointerout', () => { this.touchRight = false; });
 
+    // Jump button (center bottom)
+    const jumpBtn = this.add.circle(GAME_WIDTH / 2, btnY, btnSize / 2, 0xffffff, btnAlpha)
+      .setDepth(d).setInteractive().setScrollFactor(0);
+    this.add.text(GAME_WIDTH / 2, btnY, '▲', {
+      fontSize: '28px', color: '#ffffff', fontFamily: 'monospace',
+    }).setOrigin(0.5).setDepth(d + 1).setScrollFactor(0);
+
+    jumpBtn.on('pointerdown', () => { this.touchJump = true; });
+
     // Store refs so drag handler can ignore touches on buttons
     this._touchBtnLeft = leftBtn;
     this._touchBtnRight = rightBtn;
+    this._touchBtnJump = jumpBtn;
   }
 
   // ── Update ──
@@ -512,11 +527,12 @@ export default class SpinScene extends Phaser.Scene {
     // Push player out of any platform they're overlapping
     this.resolvePlayerPlatformOverlap();
 
-    // ── Slope traction: slide off platforms tilted > 20% ──
+    // ── Slope traction: slide off platforms tilted > 20% grade ──
     // 20% grade = atan(0.2) ≈ 0.197 rad ≈ 11.3°
     const TRACTION_LIMIT = 0.197;
-    const SLIDE_FORCE = 400;
+    const SLIDE_ACCEL = 600;
     const onGround = this.player.body.blocked.down || this.player.body.touching.down;
+    let isSliding = false;
 
     if (onGround && !this.isHurt) {
       // Find which platform the player is standing on
@@ -527,10 +543,10 @@ export default class SpinScene extends Phaser.Scene {
 
       for (let i = 0; i < this.platformBodies.length; i++) {
         const sprite = this.platformBodies[i];
-        const dx = Math.abs(px - sprite.x);
-        const dy = py - sprite.y;
-        if (dx < sprite.displayWidth / 2 + 8 && dy > -5 && dy < sprite.displayHeight / 2 + 10) {
-          const d = dx + Math.abs(dy);
+        const ddx = Math.abs(px - sprite.x);
+        const ddy = py - sprite.y;
+        if (ddx < sprite.displayWidth / 2 + 8 && ddy > -5 && ddy < sprite.displayHeight / 2 + 10) {
+          const d = ddx + Math.abs(ddy);
           if (d < minDist) {
             minDist = d;
             standingPlatform = { index: i, sprite };
@@ -540,38 +556,56 @@ export default class SpinScene extends Phaser.Scene {
 
       if (standingPlatform) {
         const def = this.platformDefs[standingPlatform.index];
-        // The platform's screen rotation = base angle + record rotation + tilt
+        // Platform's screen-space angle
         const screenAngle = def.angle + this.currentAngle + (def.tilt || 0);
-        // Normalize to get the tilt relative to horizontal
-        // cos(screenAngle) gives how horizontal the surface is
-        // We want the deviation from flat (horizontal = angle is multiple of PI)
-        const surfaceTilt = Math.abs(Math.sin(screenAngle));
+        // How tilted the surface is from horizontal (0 = flat, 1 = vertical)
+        const tiltAmount = Math.abs(Math.sin(screenAngle));
 
-        if (surfaceTilt > Math.sin(TRACTION_LIMIT)) {
-          // Slide along the slope — direction depends on which way it tilts
-          const slideDir = Math.cos(screenAngle) > 0 ? 1 : -1;
-          const slideStrength = (surfaceTilt - Math.sin(TRACTION_LIMIT)) / (1 - Math.sin(TRACTION_LIMIT));
-          this.player.body.velocity.x += slideDir * SLIDE_FORCE * slideStrength * dt;
+        if (tiltAmount > Math.sin(TRACTION_LIMIT)) {
+          isSliding = true;
+          // Slide strength ramps from 0 at the limit to 1 at vertical
+          const strength = (tiltAmount - Math.sin(TRACTION_LIMIT)) / (1 - Math.sin(TRACTION_LIMIT));
+          // Slide direction is along the platform surface, downhill
+          // The "downhill" direction on a tilted platform: perpendicular to the surface normal
+          // Surface normal points at screenAngle - PI/2, downhill is the component with +Y
+          const downhillX = Math.cos(screenAngle);
+          const downhillY = Math.sin(screenAngle);
+          // Make sure we slide "down" (positive Y component = downward on screen)
+          const sign = downhillY >= 0 ? 1 : -1;
+
+          this.player.body.velocity.x += sign * downhillX * SLIDE_ACCEL * strength * dt;
+          this.player.body.velocity.y += Math.abs(downhillY) * SLIDE_ACCEL * strength * dt * 0.5;
         }
       }
     }
 
     // A/D horizontal movement + touch buttons (no jump)
+    // When sliding hard, player input is weakened
     if (!this.isHurt) {
       const moveLeft = this.keys.left.isDown || this.keys.arrowLeft.isDown || this.touchLeft;
       const moveRight = this.keys.right.isDown || this.keys.arrowRight.isDown || this.touchRight;
-      const MOVE_SPEED = 180;
+      const MOVE_SPEED = isSliding ? 100 : 180;
 
       if (moveLeft) {
-        this.player.setVelocityX(-MOVE_SPEED);
+        this.player.body.velocity.x += (-MOVE_SPEED - this.player.body.velocity.x) * 0.15;
         this.player.setFlipX(true);
       } else if (moveRight) {
-        this.player.setVelocityX(MOVE_SPEED);
+        this.player.body.velocity.x += (MOVE_SPEED - this.player.body.velocity.x) * 0.15;
         this.player.setFlipX(false);
       } else {
         // Apply friction when not pressing keys
         this.player.setVelocityX(this.player.body.velocity.x * 0.88);
       }
+
+      // Jump — space, W, or up arrow (only when on ground)
+      const jumpPressed = Phaser.Input.Keyboard.JustDown(this.keys.jump) ||
+        Phaser.Input.Keyboard.JustDown(this.keys.jumpUp) ||
+        Phaser.Input.Keyboard.JustDown(this.keys.jumpArrow) ||
+        this.touchJump;
+      if (jumpPressed && onGround) {
+        this.player.setVelocityY(-450);
+      }
+      this.touchJump = false; // reset single-press touch flag
     }
 
     // Death check
