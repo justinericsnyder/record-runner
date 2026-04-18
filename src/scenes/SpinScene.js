@@ -125,7 +125,7 @@ export default class SpinScene extends Phaser.Scene {
     });
 
     // Add arc wall collisions with player — deferred until after player creation
-    this._pendingArcSprites = arcSprites;
+    this._pendingArcSprites = this.arcWallSegments.map(s => s.sprite);
 
     // Exit
     this.exitSprite = this.physics.add.sprite(0, 0, 'exit');
