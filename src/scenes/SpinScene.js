@@ -176,8 +176,16 @@ export default class SpinScene extends Phaser.Scene {
     this.isHurt = false;
     this.exitReached = false;
 
+    // Keyboard input — A/D for horizontal movement (no jump)
+    this.keys = this.input.keyboard.addKeys({
+      left: Phaser.Input.Keyboard.KeyCodes.A,
+      right: Phaser.Input.Keyboard.KeyCodes.D,
+      arrowLeft: Phaser.Input.Keyboard.KeyCodes.LEFT,
+      arrowRight: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+    });
+
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 35,
-      'Click & drag to spin the record', {
+      'Click & drag to spin  •  A / D to move', {
         fontSize: '14px', color: '#aaaacc', fontFamily: 'monospace',
       }).setOrigin(0.5).setDepth(100);
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 16,
@@ -373,6 +381,24 @@ export default class SpinScene extends Phaser.Scene {
 
     // Push player out of any platform they're overlapping
     this.resolvePlayerPlatformOverlap();
+
+    // A/D horizontal movement (no jump)
+    if (!this.isHurt) {
+      const moveLeft = this.keys.left.isDown || this.keys.arrowLeft.isDown;
+      const moveRight = this.keys.right.isDown || this.keys.arrowRight.isDown;
+      const MOVE_SPEED = 180;
+
+      if (moveLeft) {
+        this.player.setVelocityX(-MOVE_SPEED);
+        this.player.setFlipX(true);
+      } else if (moveRight) {
+        this.player.setVelocityX(MOVE_SPEED);
+        this.player.setFlipX(false);
+      } else {
+        // Apply friction when not pressing keys
+        this.player.setVelocityX(this.player.body.velocity.x * 0.88);
+      }
+    }
 
     // Death check
     const dx = this.player.x - RECORD_CENTER_X;
