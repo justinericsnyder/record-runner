@@ -457,6 +457,50 @@ export default class SpinScene extends Phaser.Scene {
     // Push player out of any platform they're overlapping
     this.resolvePlayerPlatformOverlap();
 
+    // ── Slope traction: slide off platforms tilted > 20% ──
+    // 20% grade = atan(0.2) ≈ 0.197 rad ≈ 11.3°
+    const TRACTION_LIMIT = 0.197;
+    const SLIDE_FORCE = 400;
+    const onGround = this.player.body.blocked.down || this.player.body.touching.down;
+
+    if (onGround && !this.isHurt) {
+      // Find which platform the player is standing on
+      const px = this.player.x;
+      const py = this.player.y + this.player.body.height / 2 + 2;
+      let standingPlatform = null;
+      let minDist = Infinity;
+
+      for (let i = 0; i < this.platformBodies.length; i++) {
+        const sprite = this.platformBodies[i];
+        const dx = Math.abs(px - sprite.x);
+        const dy = py - sprite.y;
+        if (dx < sprite.displayWidth / 2 + 8 && dy > -5 && dy < sprite.displayHeight / 2 + 10) {
+          const d = dx + Math.abs(dy);
+          if (d < minDist) {
+            minDist = d;
+            standingPlatform = { index: i, sprite };
+          }
+        }
+      }
+
+      if (standingPlatform) {
+        const def = this.platformDefs[standingPlatform.index];
+        // The platform's screen rotation = base angle + record rotation + tilt
+        const screenAngle = def.angle + this.currentAngle + (def.tilt || 0);
+        // Normalize to get the tilt relative to horizontal
+        // cos(screenAngle) gives how horizontal the surface is
+        // We want the deviation from flat (horizontal = angle is multiple of PI)
+        const surfaceTilt = Math.abs(Math.sin(screenAngle));
+
+        if (surfaceTilt > Math.sin(TRACTION_LIMIT)) {
+          // Slide along the slope — direction depends on which way it tilts
+          const slideDir = Math.cos(screenAngle) > 0 ? 1 : -1;
+          const slideStrength = (surfaceTilt - Math.sin(TRACTION_LIMIT)) / (1 - Math.sin(TRACTION_LIMIT));
+          this.player.body.velocity.x += slideDir * SLIDE_FORCE * slideStrength * dt;
+        }
+      }
+    }
+
     // A/D horizontal movement (no jump)
     if (!this.isHurt) {
       const moveLeft = this.keys.left.isDown || this.keys.arrowLeft.isDown;
