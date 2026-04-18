@@ -37,6 +37,8 @@ function generateSong(seed, difficulty) {
   const collectibles = [];
   const hazards = [];
   const powerups = [];
+  const springs = [];
+  const arcWalls = [];
 
   const maxJumpDist = 55;
   const maxJumpAngle = PI * 0.28;
@@ -92,6 +94,12 @@ function generateSong(seed, difficulty) {
     if (i >= 3 && rng() < 0.15 + d * 0.12) {
       hazards.push({ angle, dist: dist - 1, width: Math.min(width * 0.7, 50) });
     }
+
+    // Spring on some platforms (not first 2, not if hazard already placed, ~20% chance)
+    const hasHazardHere = hazards.length > 0 && hazards[hazards.length - 1].angle === angle;
+    if (i >= 2 && !hasHazardHere && rng() < 0.18) {
+      springs.push({ angle, dist: dist - (height / 2) - 2, platformIndex: i });
+    }
   }
 
   // Bonus collectibles
@@ -119,11 +127,36 @@ function generateSong(seed, difficulty) {
     powerups.push({ angle: puAngle, dist: puDist, type: puType });
   }
 
+  // ── Arc walls: semi-circular barriers that create a maze ──
+  // More walls on harder levels. Each wall is an arc at a fixed radius
+  // with a gap the player must find/use to pass through.
+  const wallCount = randInt(2 + Math.floor(d), 4 + Math.floor(d * 2));
+
+  for (let i = 0; i < wallCount; i++) {
+    // Place at a radius between the platform spiral bands
+    const wallDist = rand(endDist + 30, startDist - 20);
+    // Arc center angle — spread across the level's angular range
+    const wallAngle = rand(angleStart + 0.5, angleEnd - 0.5);
+    // Arc span: how much of the circle this wall covers (PI*0.3 to PI*0.8)
+    const arcSpan = rand(PI * 0.25, PI * 0.7 + d * 0.15);
+    // Number of small segments to approximate the curve
+    const segments = Math.max(4, Math.round(arcSpan * wallDist / 20));
+
+    arcWalls.push({
+      angle: wallAngle,
+      dist: wallDist,
+      arcSpan,
+      segments,
+    });
+  }
+
   return {
     platforms,
     collectibles,
     hazards,
     powerups,
+    springs,
+    arcWalls,
     playerStart: { angle: PI, dist: startDist },
     exit: {
       angle: platforms[platforms.length - 1].angle,

@@ -41,6 +41,8 @@ export default class BootScene extends Phaser.Scene {
     this.genPowerUp('powerup_stop', 0x00ccff);
     this.genPowerUp('powerup_slow', 0x88ff44);
     this.genPowerUp('powerup_fast', 0xff8800);
+    this.genSpring();
+    this.genArcWall();
   }
 
   // ── Guitar Pick (cel-shaded) ──
@@ -295,6 +297,87 @@ export default class BootScene extends Phaser.Scene {
     g.strokeCircle(r, r, r - 6);
 
     g.generateTexture(key, size, size);
+    g.destroy();
+  }
+
+  // ── Spring (cel-shaded coil on a base) ──
+  genSpring() {
+    const w = 26, h = 22;
+    const g = this.add.graphics();
+    const base = 0x44dd66;
+    const shadow = darken(base, 60);
+    const highlight = lighten(base, 50);
+
+    // Black outline base plate
+    g.fillStyle(0x000000, 1);
+    g.fillRect(2, h - 6, w - 4, 6);
+    // Base plate fill
+    g.fillStyle(0x888888, 1);
+    g.fillRect(3, h - 5, w - 6, 4);
+    g.fillStyle(0xaaaaaa, 1);
+    g.fillRect(3, h - 5, w - 6, 2);
+
+    // Coil zigzag — black outline first
+    g.lineStyle(4, 0x000000, 1);
+    g.beginPath();
+    g.moveTo(w / 2, h - 6);
+    g.lineTo(6, h - 10);
+    g.lineTo(w - 6, h - 14);
+    g.lineTo(8, h - 18);
+    g.lineTo(w - 8, h - 22);
+    g.strokePath();
+
+    // Coil zigzag — colored fill
+    g.lineStyle(2, base, 1);
+    g.beginPath();
+    g.moveTo(w / 2, h - 6);
+    g.lineTo(6, h - 10);
+    g.lineTo(w - 6, h - 14);
+    g.lineTo(8, h - 18);
+    g.lineTo(w - 8, h - 22);
+    g.strokePath();
+
+    // Highlight on top coil
+    g.lineStyle(1, highlight, 1);
+    g.beginPath();
+    g.moveTo(8, h - 18);
+    g.lineTo(w - 8, h - 22);
+    g.strokePath();
+
+    // Top cap
+    g.fillStyle(0x000000, 1);
+    g.fillRect(w / 2 - 8, 0, 16, 4);
+    g.fillStyle(shadow, 1);
+    g.fillRect(w / 2 - 7, 1, 14, 2);
+    g.fillStyle(highlight, 1);
+    g.fillRect(w / 2 - 7, 1, 14, 1);
+
+    g.generateTexture('spring', w, h);
+    g.destroy();
+  }
+
+  // ── Arc wall segment (small block used to build curved walls) ──
+  genArcWall() {
+    const w = 14, h = 14;
+    const g = this.add.graphics();
+    const base = 0x6a4488;
+    const shadow = darken(base, 45);
+    const highlight = lighten(base, 40);
+
+    // Black outline
+    g.fillStyle(0x000000, 1);
+    g.fillRoundedRect(0, 0, w, h, 3);
+    // Main fill
+    g.fillStyle(base, 1);
+    g.fillRoundedRect(2, 2, w - 4, h - 4, 2);
+    // Top highlight
+    g.fillStyle(highlight, 1);
+    g.fillRect(3, 2, w - 6, 3);
+    // Bottom shadow
+    g.fillStyle(shadow, 1);
+    g.fillRect(3, h - 5, w - 6, 3);
+
+    g.generateTexture('arcwall', w, h);
     g.destroy();
   }
 }

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#1a1a2e"/>
+  <!-- Record disc -->
+  <circle cx="380" cy="315" r="240" fill="#111122" stroke="#000" stroke-width="4"/>
+  <circle cx="380" cy="315" r="220" fill="none" stroke="#2a2a44" stroke-width="2"/>
+  <circle cx="380" cy="315" r="195" fill="none" stroke="#2a2a44" stroke-width="2"/>
+  <circle cx="380" cy="315" r="170" fill="none" stroke="#2a2a44" stroke-width="2"/>
+  <circle cx="380" cy="315" r="145" fill="none" stroke="#2a2a44" stroke-width="2"/>
+  <circle cx="380" cy="315" r="120" fill="none" stroke="#2a2a44" stroke-width="2"/>
+  <circle cx="380" cy="315" r="95" fill="none" stroke="#2a2a44" stroke-width="2"/>
+  <!-- Highlight arc -->
+  <path d="M 240 160 A 200 200 0 0 1 340 110" fill="none" stroke="#3a3a5c" stroke-width="4" stroke-linecap="round"/>
+  <!-- Label -->
+  <circle cx="380" cy="315" r="65" fill="#e94560"/>
+  <circle cx="380" cy="315" r="65" fill="none" stroke="#000" stroke-width="2" opacity="0.3"/>
+  <circle cx="368" cy="303" r="15" fill="#fff" opacity="0.15"/>
+  <!-- Center hole -->
+  <circle cx="380" cy="315" r="12" fill="#1a1a2e" stroke="#333" stroke-width="2"/>
+  <!-- Title text -->
+  <text x="700" y="260" font-family="monospace" font-size="72" font-weight="bold" fill="#e94560" text-anchor="middle">RECORD</text>
+  <text x="700" y="340" font-family="monospace" font-size="72" font-weight="bold" fill="#e94560" text-anchor="middle">RUNNER</text>
+  <!-- Subtitle -->
+  <text x="700" y="400" font-family="monospace" font-size="24" fill="#aaaacc" text-anchor="middle">Spin the record. Ride the grooves.</text>
+  <!-- Music notes decoration -->
+  <text x="580" y="480" font-family="monospace" font-size="28" fill="#f5c518" opacity="0.6">♪</text>
+  <text x="720" y="500" font-family="monospace" font-size="22" fill="#f5c518" opacity="0.4">♪</text>
+  <text x="830" y="470" font-family="monospace" font-size="32" fill="#f5c518" opacity="0.5">♪</text>
+</svg>

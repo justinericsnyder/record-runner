@@ -43,6 +43,8 @@ export default class SpinScene extends Phaser.Scene {
     this.collectibleDefs = song.collectibles.map(c => ({ ...c, alive: true }));
     this.hazardDefs = song.hazards.map(h => ({ ...h }));
     this.powerupDefs = (song.powerups || []).map(p => ({ ...p, alive: true }));
+    this.springDefs = (song.springs || []).map(s => ({ ...s }));
+    this.arcWallDefs = (song.arcWalls || []);
     this.exitDef = { ...song.exit };
     this.playerStartDef = { ...song.playerStart };
 
@@ -91,6 +93,43 @@ export default class SpinScene extends Phaser.Scene {
       this.powerupSprites.push(pu);
     });
 
+    // Springs — sit on top of platforms, bounce the player
+    this.springSprites = [];
+    this.springDefs.forEach((def) => {
+      const sp = this.physics.add.sprite(0, 0, 'spring');
+      sp.body.setAllowGravity(false);
+      sp.body.setImmovable(true);
+      sp.body.moves = false;
+      sp.body.setSize(22, 10);
+      sp.body.setOffset(2, 0);
+      sp.setDepth(6);
+      this.springSprites.push(sp);
+    });
+
+    // Arc walls — each definition expands into multiple small segment sprites
+    this.arcWallSegments = []; // flat array of { sprite, angle, dist }
+    this.arcWallDefs.forEach((def) => {
+      const halfSpan = def.arcSpan / 2;
+      for (let s = 0; s < def.segments; s++) {
+        const t = s / (def.segments - 1); // 0..1
+        const segAngle = def.angle - halfSpan + def.arcSpan * t;
+        const seg = this.physics.add.sprite(0, 0, 'arcwall');
+        seg.setDisplaySize(14, 14);
+        seg.body.setImmovable(true);
+        seg.body.setAllowGravity(false);
+        seg.body.moves = true;
+        seg.body.pushable = false;
+        seg.setDepth(3);
+        this.arcWallSegments.push({ sprite: seg, angle: segAngle, dist: def.dist });
+      }
+    });
+
+    // Add arc wall collisions with player
+    const arcSprites = this.arcWallSegments.map(s => s.sprite);
+    if (arcSprites.length > 0) {
+      this.physics.add.collider(this.player, arcSprites);
+    }
+
     // Exit
     this.exitSprite = this.physics.add.sprite(0, 0, 'exit');
     this.exitSprite.body.setAllowGravity(false);
@@ -121,6 +160,7 @@ export default class SpinScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.hazardSprites, this.hitHazard, null, this);
     this.physics.add.overlap(this.player, this.exitSprite, this.reachExit, null, this);
     this.physics.add.overlap(this.player, this.powerupSprites, this.collectPowerup, null, this);
+    this.physics.add.overlap(this.player, this.springSprites, this.hitSpring, null, this);
 
     // ── Drag-to-rotate input ──
     this.isDragging = false;
@@ -216,6 +256,14 @@ export default class SpinScene extends Phaser.Scene {
       sprite.rotation = def.angle + rotation + (def.tilt || 0);
       sprite.body.reset(pos.x, pos.y);
     });
+
+    // Arc wall segments
+    this.arcWallSegments.forEach((seg) => {
+      const pos = this.polarToWorld(seg.angle, seg.dist, rotation);
+      seg.sprite.setPosition(pos.x, pos.y);
+      seg.sprite.body.reset(pos.x, pos.y);
+    });
+
     this._positionNonPlatforms(rotation);
   }
 
@@ -230,13 +278,20 @@ export default class SpinScene extends Phaser.Scene {
     this.platformDefs.forEach((def, i) => {
       const target = this.polarToWorld(def.angle, def.dist, rotation);
       const sprite = this.platformBodies[i];
-
-      // Set velocity to reach target position this frame
       sprite.body.setVelocity(
         (target.x - sprite.x) * invDt,
         (target.y - sprite.y) * invDt
       );
       sprite.rotation = def.angle + rotation + (def.tilt || 0);
+    });
+
+    // Arc wall segments — velocity-based like platforms
+    this.arcWallSegments.forEach((seg) => {
+      const target = this.polarToWorld(seg.angle, seg.dist, rotation);
+      seg.sprite.body.setVelocity(
+        (target.x - seg.sprite.x) * invDt,
+        (target.y - seg.sprite.y) * invDt
+      );
     });
 
     this._positionNonPlatforms(rotation);
@@ -273,6 +328,16 @@ export default class SpinScene extends Phaser.Scene {
     this.exitSprite.x = exitPos.x;
     this.exitSprite.y = exitPos.y;
     this.exitSprite.body.reset(exitPos.x, exitPos.y);
+
+    // Springs
+    this.springDefs.forEach((def, i) => {
+      const pos = this.polarToWorld(def.angle, def.dist, rotation);
+      const sprite = this.springSprites[i];
+      sprite.x = pos.x;
+      sprite.y = pos.y;
+      sprite.rotation = def.angle + rotation;
+      sprite.body.reset(pos.x, pos.y);
+    });
   }
 
   /** After physics step, snap platforms to exact target so they don't drift */
@@ -283,6 +348,14 @@ export default class SpinScene extends Phaser.Scene {
       sprite.setPosition(target.x, target.y);
       sprite.body.setVelocity(0, 0);
       sprite.body.position.set(target.x - sprite.body.halfWidth, target.y - sprite.body.halfHeight);
+    });
+
+    // Snap arc wall segments too
+    this.arcWallSegments.forEach((seg) => {
+      const target = this.polarToWorld(seg.angle, seg.dist, rotation);
+      seg.sprite.setPosition(target.x, target.y);
+      seg.sprite.body.setVelocity(0, 0);
+      seg.sprite.body.position.set(target.x - seg.sprite.body.halfWidth, target.y - seg.sprite.body.halfHeight);
     });
   }
 
@@ -421,7 +494,10 @@ export default class SpinScene extends Phaser.Scene {
     const pw = pb.width;
     const ph = pb.height;
 
-    for (const sprite of this.platformBodies) {
+    // Check platforms and arc wall segments
+    const allBodies = [...this.platformBodies, ...this.arcWallSegments.map(s => s.sprite)];
+
+    for (const sprite of allBodies) {
       const sb = sprite.body;
       const sx = sb.x;
       const sy = sb.y;
@@ -467,6 +543,25 @@ export default class SpinScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  hitSpring(player, spring) {
+    // Super bounce — much higher than a normal jump would be
+    const SPRING_VELOCITY = -650;
+    player.setVelocityY(SPRING_VELOCITY);
+
+    // Visual feedback — squash and stretch the spring
+    this.tweens.add({
+      targets: spring,
+      scaleY: 0.4,
+      scaleX: 1.3,
+      duration: 80,
+      yoyo: true,
+      ease: 'Bounce.easeOut',
+    });
+
+    // Brief camera shake for impact feel
+    this.cameras.main.shake(60, 0.005);
   }
 
   collectNote(player, note) {
