@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, GRAVITY } from './config.js';
 import BootScene from './scenes/BootScene.js';
 import MenuScene from './scenes/MenuScene.js';
+import LevelSelectScene from './scenes/LevelSelectScene.js';
 import SpinScene from './scenes/SpinScene.js';
 import SongTransition from './scenes/SongTransition.js';
 import RecordComplete from './scenes/RecordComplete.js';
@@ -19,7 +20,7 @@ const config = {
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   input: {
-    activePointers: 3, // support multi-touch (drag + buttons)
+    activePointers: 3,
   },
   physics: {
     default: 'arcade',
@@ -31,6 +32,7 @@ const config = {
   scene: [
     BootScene,
     MenuScene,
+    LevelSelectScene,
     SpinScene,
     SongTransition,
     RecordComplete,

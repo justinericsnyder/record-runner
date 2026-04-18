@@ -4,6 +4,7 @@ import {
   RECORD_CENTER_X, RECORD_CENTER_Y, RECORD_RADIUS,
 } from '../config.js';
 import { RECORDS } from '../levels.js';
+import { playLevelMusic, stopMusic } from '../music.js';
 
 /**
  * Spin Mode — you rotate the record by click-dragging.
@@ -272,6 +273,13 @@ export default class SpinScene extends Phaser.Scene {
       speed: { min: 50, max: 150 }, scale: { start: 0.6, end: 0 },
       lifespan: 400, tint: 0xf5c518, emitting: false,
     });
+
+    // Start procedural music for this level
+    const songSeed = song.bpm * 1000 + this.recordIndex * 100 + this.songIndex;
+    playLevelMusic(songSeed, song.bpm, this.recordIndex);
+
+    // Stop music when leaving scene
+    this.events.on('shutdown', stopMusic);
   }
 
   polarToWorld(angle, dist, rotation) {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js';
 import { RECORDS } from '../levels.js';
+import { getTopScores } from '../scores.js';
 
 export default class MenuScene extends Phaser.Scene {
   constructor() {
@@ -10,126 +11,104 @@ export default class MenuScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#1a1a2e');
 
-    // Spinning record background
-    this.recordGraphic = this.drawRecord(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, 200, 0x1a1a2e, 0xe94560);
-
     // Title
-    this.add.text(GAME_WIDTH / 2, 50, 'RECORD RUNNER', {
-      fontSize: '42px',
-      color: '#e94560',
-      fontFamily: 'monospace',
-      fontStyle: 'bold',
+    this.add.text(GAME_WIDTH / 2, 40, 'RECORD RUNNER', {
+      fontSize: '36px', color: '#e94560', fontFamily: 'monospace', fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, 92, 'Spin the record. Ride the grooves.', {
-      fontSize: '14px',
-      color: '#aaaacc',
-      fontFamily: 'monospace',
+    this.add.text(GAME_WIDTH / 2, 78, 'Spin the record. Ride the grooves.', {
+      fontSize: '13px', color: '#aaaacc', fontFamily: 'monospace',
     }).setOrigin(0.5);
 
-    // Record selection
-    const startY = GAME_HEIGHT - 190;
-    this.add.text(GAME_WIDTH / 2, startY - 30, 'SELECT A RECORD', {
-      fontSize: '16px',
-      color: '#888899',
-      fontFamily: 'monospace',
+    // Record grid — 3 columns, 2 rows
+    const cols = 3;
+    const cellW = 180;
+    const cellH = 160;
+    const gridW = cols * cellW;
+    const startX = (GAME_WIDTH - gridW) / 2 + cellW / 2;
+    const startY = 140;
+
+    this.add.text(GAME_WIDTH / 2, startY - 25, 'SELECT A RECORD', {
+      fontSize: '12px', color: '#666677', fontFamily: 'monospace',
     }).setOrigin(0.5);
 
     RECORDS.forEach((record, i) => {
-      const x = GAME_WIDTH / 2 - (RECORDS.length - 1) * 100 + i * 200;
-      const y = startY + 30;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = startX + col * cellW;
+      const y = startY + row * cellH + 30;
 
-      // Mini record
-      const mini = this.drawRecord(x, y, 50, record.color, record.labelColor);
+      const mini = this.drawRecord(x, y, 40, record.color, record.labelColor);
 
-      const label = this.add.text(x, y + 70, record.name, {
-        fontSize: '13px',
-        color: '#ccccdd',
-        fontFamily: 'monospace',
+      const label = this.add.text(x, y + 55, record.name, {
+        fontSize: '11px', color: '#ccccdd', fontFamily: 'monospace',
       }).setOrigin(0.5);
 
-      const songCount = this.add.text(x, y + 88, `${record.songs.length} tracks`, {
-        fontSize: '11px',
-        color: '#777788',
-        fontFamily: 'monospace',
+      const info = this.add.text(x, y + 72, `${record.songs.length} tracks`, {
+        fontSize: '10px', color: '#666677', fontFamily: 'monospace',
       }).setOrigin(0.5);
 
-      // Make clickable
-      const hitArea = this.add.rectangle(x, y, 110, 130, 0xffffff, 0)
+      const hitArea = this.add.rectangle(x, y + 20, cellW - 20, cellH - 20, 0xffffff, 0)
         .setInteractive({ useHandCursor: true });
 
-      hitArea.on('pointerover', () => {
-        label.setColor('#e94560');
-        mini.setScale(1.1);
-      });
-      hitArea.on('pointerout', () => {
-        label.setColor('#ccccdd');
-        mini.setScale(1);
-      });
+      hitArea.on('pointerover', () => { label.setColor('#e94560'); mini.setScale(1.1); });
+      hitArea.on('pointerout', () => { label.setColor('#ccccdd'); mini.setScale(1); });
       hitArea.on('pointerdown', () => {
-        this.scene.start('Spin', { recordIndex: i, songIndex: 0 });
+        this.scene.start('LevelSelect', { recordIndex: i });
       });
     });
 
-    // Controls hint
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 20, 'Click & drag to spin  •  A / D to move', {
-      fontSize: '11px',
-      color: '#555566',
-      fontFamily: 'monospace',
+    // Top scores
+    const scoresY = startY + Math.ceil(RECORDS.length / cols) * cellH + 40;
+    this.add.text(GAME_WIDTH / 2, scoresY, 'TOP SCORES', {
+      fontSize: '12px', color: '#666677', fontFamily: 'monospace',
     }).setOrigin(0.5);
+
+    const scores = getTopScores(5);
+    scores.forEach((s, i) => {
+      this.add.text(GAME_WIDTH / 2, scoresY + 22 + i * 18,
+        `${s.initials}  ${String(s.score).padStart(6, ' ')}`, {
+          fontSize: '12px',
+          color: i === 0 ? '#f5c518' : '#888899',
+          fontFamily: 'monospace',
+        }).setOrigin(0.5);
+    });
+
+    // Controls hint
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 18,
+      'Drag to spin  •  A/D to move  •  Space to jump', {
+        fontSize: '10px', color: '#444455', fontFamily: 'monospace',
+      }).setOrigin(0.5);
   }
 
   drawRecord(x, y, radius, color, labelColor) {
     const container = this.add.container(x, y);
     const g = this.add.graphics();
-
-    // Black outline
     g.fillStyle(0x000000, 1);
     g.fillCircle(0, 0, radius + 2);
-
-    // Main disc flat fill
     g.fillStyle(0x18182e, 1);
     g.fillCircle(0, 0, radius);
-
-    // Shadow crescent
     g.fillStyle(0x0e0e1e, 1);
     g.beginPath();
-    g.arc(3, 3, radius - 3, 0, Math.PI * 2, false);
+    g.arc(2, 2, radius - 2, 0, Math.PI * 2, false);
     g.closePath();
     g.fillPath();
     g.fillStyle(0x18182e, 1);
-    g.fillCircle(0, 0, radius - 4);
-
-    // Bold groove rings
-    for (let r = radius - 6; r > radius * 0.4; r -= 8) {
-      g.lineStyle(2, 0x2a2a44, 1);
+    g.fillCircle(0, 0, radius - 3);
+    for (let r = radius - 5; r > radius * 0.4; r -= 6) {
+      g.lineStyle(1.5, 0x2a2a44, 1);
       g.strokeCircle(0, 0, r);
     }
-
-    // Label with outline
     g.fillStyle(labelColor, 1);
     g.fillCircle(0, 0, radius * 0.3);
-    g.lineStyle(2, 0x000000, 0.6);
+    g.lineStyle(1.5, 0x000000, 0.5);
     g.strokeCircle(0, 0, radius * 0.3);
-
-    // Label highlight
-    g.fillStyle(0xffffff, 0.2);
-    g.fillCircle(-radius * 0.08, -radius * 0.08, radius * 0.12);
-
-    // Center hole
+    g.fillStyle(0xffffff, 0.15);
+    g.fillCircle(-radius * 0.08, -radius * 0.08, radius * 0.1);
     g.fillStyle(0x000000, 1);
-    g.fillCircle(0, 0, 4);
-
+    g.fillCircle(0, 0, 3);
     container.add(g);
-
-    this.tweens.add({
-      targets: container,
-      angle: 360,
-      duration: 8000,
-      repeat: -1,
-      ease: 'Linear',
-    });
-
+    this.tweens.add({ targets: container, angle: 360, duration: 7000, repeat: -1, ease: 'Linear' });
     return container;
   }
 }
