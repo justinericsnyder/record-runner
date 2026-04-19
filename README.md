@@ -35,37 +35,172 @@ The core mechanic is a physics puzzle: the player character sits on a spinning v
 
 ---
 
-## Architecture Overview
+## System Architecture
 
-```
-┌──────────────────────────────────────────────────────┐
-│                   Browser Client                      │
-│                                                      │
-│  ┌────────────────────────────────────────────────┐  │
-│  │              Game Engine (Phaser 3)             │  │
-│  │  Physics • Scenes • Rendering • Input • Scale  │  │
-│  └────────────────────┬───────────────────────────┘  │
-│                       │                              │
-│  ┌────────┬───────────┼───────────┬──────────────┐  │
-│  │ Level  │ Procedural│  Core     │   Score      │  │
-│  │ Gen    │ Music     │ Gameplay  │   System     │  │
-│  │(Seeded)│(Web Audio)│ (Physics) │ (Client-side)│  │
-│  └────────┴───────────┴───────────┴──────────────┘  │
-│                                                      │
-│  ┌────────────────────────────────────────────────┐  │
-│  │         Admin Dashboard (Level Editor)         │  │
-│  │  AI Generation • Visual Editor • Validation    │  │
-│  └────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────┘
-                         │
-                         ▼
-┌──────────────────────────────────────────────────────┐
-│              Deployment (CI/CD → CDN)                 │
-│         Git push → Build → Static hosting            │
-└──────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Browser["Browser Client"]
+        direction TB
+        
+        subgraph Engine["Game Engine — Phaser 3"]
+            Physics["Arcade Physics"]
+            Scenes["Scene Manager"]
+            Graphics["Graphics API"]
+            Input["Input System"]
+            Scale["Scale Manager"]
+        end
+
+        subgraph Gameplay["Core Gameplay"]
+            Spin["Spin Mechanic<br/>Drag-to-rotate + Momentum"]
+            Collision["Collision System<br/>Velocity-based + Overlap Resolution"]
+            Slope["Slope Traction<br/>Tilt-based Sliding"]
+            Objects["Game Objects<br/>Platforms • Springs • Walls • Power-ups"]
+        end
+
+        subgraph Procedural["Procedural Systems"]
+            LevelGen["Level Generator<br/>Seeded • Reachability Guaranteed"]
+            MusicGen["Music Engine<br/>Web Audio Synthesis"]
+            ArtGen["Texture Generator<br/>Cel-shaded Runtime Art"]
+        end
+
+        subgraph Data["Data Layer"]
+            Scores["Score System<br/>Client-side Persistence"]
+            Sanitize["Input Sanitization"]
+        end
+
+        Admin["Admin Dashboard<br/>Level Editor • AI Generation"]
+    end
+
+    Engine --> Gameplay
+    Procedural --> Gameplay
+    Gameplay --> Data
+
+    style Browser fill:#1a1a2e,stroke:#333355,color:#ccccdd
+    style Engine fill:#222240,stroke:#44446a,color:#ccccdd
+    style Gameplay fill:#2a1a2a,stroke:#e94560,color:#ccccdd
+    style Procedural fill:#1a2a1a,stroke:#44dd66,color:#ccccdd
+    style Data fill:#2a2a1a,stroke:#f5c518,color:#ccccdd
+    style Admin fill:#1a1a22,stroke:#888899,color:#ccccdd
 ```
 
-A detailed architecture diagram is available at [`docs/architecture.svg`](docs/architecture.svg).
+---
+
+## Scene Flow
+
+```mermaid
+stateDiagram-v2
+    [*] --> Boot: App Start
+    Boot --> Menu: Textures Generated
+    Menu --> LevelSelect: Pick Record
+    LevelSelect --> Spin: Pick Track
+    Spin --> SongTransition: Track Complete
+    SongTransition --> Spin: Next Track
+    Spin --> RecordComplete: All Tracks Done
+    RecordComplete --> SongTransition: Next Record
+    RecordComplete --> Victory: All Records Done
+    Spin --> GameOver: Lives = 0
+    GameOver --> Spin: Retry
+    GameOver --> Menu: Main Menu
+    Victory --> Menu: Play Again
+```
+
+---
+
+## Procedural Generation Pipeline
+
+```mermaid
+flowchart LR
+    subgraph Input
+        Seed["Level Seed"]
+        Diff["Difficulty"]
+        Names["Record & Song Names"]
+    end
+
+    subgraph LevelGen["Level Generator"]
+        PRNG["Seeded RNG"]
+        Spiral["Spiral Layout"]
+        Validate["Reachability Check"]
+    end
+
+    subgraph MusicGen["Music Engine"]
+        Keywords["Keyword Matching"]
+        ScaleSelect["Scale Selection<br/>11 scales"]
+        Compose["Composition<br/>Bass • Melody • Perc • Pad"]
+    end
+
+    subgraph ArtGen["Texture Generator"]
+        Shapes["Shape Drawing"]
+        CelShade["Cel-shading<br/>Outlines • Flat Fill • Shadow"]
+    end
+
+    subgraph Output
+        Platforms["Platforms + Hazards + Springs"]
+        Walls["Arc Walls (Maze)"]
+        Collectibles["Notes + Power-ups"]
+        Music["Looping Audio Track"]
+        Textures["12 Texture Types"]
+    end
+
+    Seed --> PRNG
+    Diff --> PRNG
+    PRNG --> Spiral --> Validate
+    Validate --> Platforms
+    Validate --> Walls
+    Validate --> Collectibles
+
+    Names --> Keywords --> ScaleSelect --> Compose --> Music
+
+    Shapes --> CelShade --> Textures
+
+    style Input fill:#222240,stroke:#44446a,color:#ccccdd
+    style LevelGen fill:#1a2a1a,stroke:#44dd66,color:#ccccdd
+    style MusicGen fill:#1a1a2a,stroke:#00ccff,color:#ccccdd
+    style ArtGen fill:#2a2a1a,stroke:#f5c518,color:#ccccdd
+    style Output fill:#2a1a2a,stroke:#e94560,color:#ccccdd
+```
+
+---
+
+## Physics & Collision Model
+
+```mermaid
+flowchart TB
+    subgraph Frame["Each Frame"]
+        direction TB
+        CalcAngle["Calculate Rotation Delta<br/>From drag or momentum"]
+        SubStep["Sub-step Rotation<br/>Small increments to prevent tunneling"]
+        MovePlat["Move Platforms via Velocity<br/>Physics engine detects collisions"]
+        ResizeAABB["Resize Collision Boxes<br/>Match rotated bounding box"]
+        Snap["Snap to Final Position"]
+        Overlap["Manual Overlap Resolution<br/>Push player out of geometry"]
+        SlopeCheck["Slope Traction Check<br/>Apply slide force if tilted"]
+        PlayerInput["Apply Player Input<br/>A/D movement + Jump"]
+    end
+
+    CalcAngle --> SubStep --> MovePlat --> ResizeAABB --> Snap --> Overlap --> SlopeCheck --> PlayerInput
+
+    style Frame fill:#1a1a2e,stroke:#e94560,color:#ccccdd
+```
+
+---
+
+## Deployment Pipeline
+
+```mermaid
+flowchart LR
+    Dev["Local Dev<br/>Vite Dev Server"] --> Push["Git Push"]
+    Push --> CI["CI/CD Build<br/>vite build"]
+    CI --> CDN["CDN<br/>Static Hosting"]
+    CDN --> Desktop["Desktop Browsers"]
+    CDN --> Mobile["Mobile Browsers"]
+
+    style Dev fill:#222240,stroke:#44446a,color:#ccccdd
+    style Push fill:#222240,stroke:#44446a,color:#ccccdd
+    style CI fill:#222240,stroke:#f5c518,color:#ccccdd
+    style CDN fill:#222240,stroke:#44dd66,color:#ccccdd
+    style Desktop fill:#2a1a2a,stroke:#e94560,color:#ccccdd
+    style Mobile fill:#2a1a2a,stroke:#e94560,color:#ccccdd
+```
 
 ---
 
@@ -85,7 +220,7 @@ A detailed architecture diagram is available at [`docs/architecture.svg`](docs/a
 
 ## Key Technical Highlights
 
-**Procedural everything** — All visuals, audio, and level layouts are generated at runtime. No sprite sheets, no audio files, no hand-placed levels. The entire game source (excluding the engine) is under 15KB.
+**Procedural everything** — All visuals, audio, and level layouts are generated at runtime. No sprite sheets, no audio files, no hand-placed levels.
 
 **Physics-driven rotation** — Platforms move via velocity rather than teleporting, allowing the physics engine to properly resolve collisions during record rotation. Rotation is sub-stepped to prevent tunneling through geometry.
 
